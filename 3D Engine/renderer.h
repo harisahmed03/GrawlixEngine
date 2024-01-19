@@ -56,6 +56,11 @@ namespace haris
 		static void fillRectangle(const Rect& rect, const RGBColor& color);
 
 	private:
+		static float area(int x1, int y1, int x2, int y2, int x3, int y3);
+
+		static bool isInside(int x1, int y1, int x2, int y2, int x3, int y3, int x, int y);
+
+	private:
 		Renderer() { buffer = {}; clearColor = { 255, 255, 255 }; };
 
 		Renderer(const Renderer&) = delete;
