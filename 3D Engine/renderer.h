@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <stdint.h>
+#include <vector>
 
 namespace haris
 {
@@ -59,6 +60,7 @@ namespace haris
 		static float area(int x1, int y1, int x2, int y2, int x3, int y3);
 
 		static bool isInside(int x1, int y1, int x2, int y2, int x3, int y3, int x, int y);
+		static std::vector<float> interpolate(int i0, float d0, int i1, float d1);
 
 	private:
 		Renderer() { buffer = {}; clearColor = { 255, 255, 255 }; };

@@ -2,6 +2,7 @@
 #include "renderer.h"
 #include <cstdlib>
 #include <algorithm>
+#include <vector>
 
 namespace haris {
 	using std::min;
@@ -27,40 +28,31 @@ namespace haris {
 
 		BitmapBuffer& buffer = getInstance().buffer;
 
-		if (b.x<0 || b.x>buffer.width || b.y<0 ||  b.y>buffer.height || a.x<0 || a.x>buffer.width || a.y<0 || a.y>buffer.height)
+		if (b.x<0 || b.x>buffer.width || b.y<0 || b.y>buffer.height || a.x<0 || a.x>buffer.width || a.y<0 || a.y>buffer.height)
 			return;
-
-		uint32_t raw_color = (color.red << 16) | (color.red << 8) | (color.blue << 0);
-
-		uint32_t* currentPixel;
-		int w = b.x - a.x;
-		int h = b.y - a.y;
-		int dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
-		if (w < 0) dx1 = -1; else if (w > 0) dx1 = 1;
-		if (h < 0) dy1 = -1; else if (h > 0) dy1 = 1;
-		if (w < 0) dx2 = -1; else if (w > 0) dx2 = 1;
-		int longest = abs(w);
-		int shortest = abs(h);
-		if (!(longest > shortest)) {
-			longest = abs(h);
-			shortest = abs(w);
-			if (h < 0) dy2 = -1; else if (h > 0) dy2 = 1;
-			dx2 = 0;
-		}
-		int numerator = longest >> 1;
-		for (int i = 0;i <= longest;i++) {
-			//set pixel
-			currentPixel = (uint32_t*)((uint8_t*)buffer.memory + a.x * bytes_per_pixel + a.y * buffer.pitch);
-			*currentPixel = raw_color;
-			numerator += shortest;
-			if (!(numerator < longest)) {
-				numerator -= longest;
-				a.x += dx1;
-				a.y += dy1;
+		
+		if (std::abs(b.x - a.x) > std::abs(b.y - a.y)) {
+			if (a.x > b.x) {
+				Point temp = a;
+				a = b;
+				b = temp;
 			}
-			else {
-				a.x += dx2;
-				a.y += dy2;
+
+			std::vector<float> ys = interpolate(a.x, a.y, b.x, b.y);
+			for (int x = a.x; x < b.x; x++) {
+				setPixel(x, (int)(0.5 + ys[x - a.x]), color);
+			}
+		}
+		else {
+			if (a.y > b.y) {
+				Point temp = a;
+				a = b;
+				b = temp;
+			}
+
+			std::vector<float> xs = interpolate(a.y, a.x, b.y, b.x);
+			for (int y = a.y; y < b.y; y++) {
+				setPixel((int)(0.5 + xs[y - a.y]), y, color);
 			}
 		}
 	}
@@ -77,11 +69,41 @@ namespace haris {
 		int yMin = (std::min({ a.y, b.y, c.y }));
 		int yMax = (std::max({ a.y, b.y, c.y }));
 
-		for (int y = yMin; y < yMax; y++)
-			for(int x = xMin; x<xMax; x++)
+		bool isEntered = false;
+
+		for (int y = yMin; y < yMax; y++) {
+			for (int x = xMin; x < xMax; x++) {
 				if (isInside(a.x, a.y, b.x, b.y, c.x, c.y, x, y)) {
+					if (!isEntered) {
+						isEntered = true;
+					}
 					setPixel(x, y, color);
 				}
+				else if (isEntered) {
+					break;
+				}
+			}	
+			isEntered = false;
+		}		
+	}
+
+	std::vector<float> Renderer::interpolate(int i0, float d0, int i1, float d1) {
+		std::vector<float> values;
+		if (i0 == i1) {
+			values.push_back(d0);
+			return values;
+		}
+
+		float a = (d1 - d0) / (static_cast<float>(i1) - static_cast<float>(i0));
+		float d = d0;
+
+		values.reserve(i1 - i0);	//make room for elements
+
+		for (int i = i0; i < i1; i++) {
+			values.push_back(d);
+			d += a;
+		}
+		return values;
 	}
 
 	float Renderer::area(int x1, int y1, int x2, int y2, int x3, int y3)
