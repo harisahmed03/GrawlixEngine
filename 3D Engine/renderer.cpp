@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <algorithm>
 #include <vector>
+#include <cmath>
+#include <iostream>
 
 namespace haris {
 	using std::min;
@@ -63,7 +65,7 @@ namespace haris {
 		drawLine(c, a, color);
 	}
 
-	void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
+	/*void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
 		int xMin = (std::min({ a.x, b.x, c.x }));
 		int xMax = (std::max({ a.x, b.x, c.x }));
 		int yMin = (std::min({ a.y, b.y, c.y }));
@@ -85,6 +87,58 @@ namespace haris {
 			}	
 			isEntered = false;
 		}		
+	}*/
+
+	void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
+		// Sort the points so that y0 <= y1 <= y2
+		if (b.y < a.y) {
+			std::swap(a, b);
+		}
+		if (c.y < a.y) {
+			std::swap(a, c);
+		}
+		if (c.y < b.y) {
+			std::swap(c, b);
+		}
+
+		std::vector<float> xab = interpolate(a.y, a.x, b.y, b.x);
+		std::vector<float> xbc = interpolate(b.y, b.x, c.y, c.x);
+		std::vector<float> xac = interpolate(a.y, a.x, c.y, c.x);
+
+		xab.pop_back();
+		std::vector<float> xabc;
+		xabc.reserve(xab.size() + xbc.size());
+		xabc.insert(xabc.end(), xab.begin(), xab.end());
+		xabc.insert(xabc.end(), xbc.begin(), xbc.end());
+
+		int m = std::floor(xabc.size() / 2);
+
+		std::vector<float> xLeft;
+		std::vector<float> xRight;
+		if (xac[m] < xabc[m]) {
+			xLeft = xac;
+			xRight = xabc;
+		}
+		else {
+			xRight = xac;
+			xLeft = xabc;
+		}
+
+		for (int y = a.y; y < c.y-1; y++) {
+			try {
+				for (int x = xLeft.at(y - a.y); x < xRight.at(y - a.y); x++) {
+					std::cout << x;
+					std::cout << y;
+					setPixel(x, y, color);
+				}
+			}
+			catch (const std::out_of_range& e) {
+				wchar_t charBuffer[256];
+				swprintf(charBuffer, 256, L"Out of range: %d\n", y - a.y);
+				OutputDebugString(charBuffer);
+				std::exit(0);
+			}
+		}
 	}
 
 	std::vector<float> Renderer::interpolate(int i0, float d0, int i1, float d1) {
@@ -104,31 +158,6 @@ namespace haris {
 			d += a;
 		}
 		return values;
-	}
-
-	float Renderer::area(int x1, int y1, int x2, int y2, int x3, int y3)
-	{
-		return abs((x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) / 2.0);
-	}
-
-	/* A function to check whether point P(x, y) lies inside the triangle formed
-	   by A(x1, y1), B(x2, y2) and C(x3, y3) */
-	bool Renderer::isInside(int x1, int y1, int x2, int y2, int x3, int y3, int x, int y)
-	{
-		/* Calculate area of triangle ABC */
-		float A = area(x1, y1, x2, y2, x3, y3);
-
-		/* Calculate area of triangle PBC */
-		float A1 = area(x, y, x2, y2, x3, y3);
-
-		/* Calculate area of triangle PAC */
-		float A2 = area(x1, y1, x, y, x3, y3);
-
-		/* Calculate area of triangle PAB */
-		float A3 = area(x1, y1, x2, y2, x, y);
-
-		/* Check if sum of A1, A2 and A3 is same as A */
-		return (A == A1 + A2 + A3);
 	}
 
 	void Renderer::fillRectangle(const Rect& rect, const RGBColor& color) 
@@ -157,7 +186,6 @@ namespace haris {
 			}
 			row += buffer.pitch;
 		}
-
 	}
 
 	void Renderer::getWindowDimensions(int* outWidth, int* outHeight) {
