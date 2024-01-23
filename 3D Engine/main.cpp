@@ -34,7 +34,7 @@ framework_app_entry_point
 
 		//haris::Renderer::drawLine(100, 10, 200, 10, { 255, 255, 255 });
 
-		haris::Renderer::drawFilledTriangle({ 100 + int(x + 0.5f), 100 + int(y + 0.5f) }, { 200 + int(x + 0.5f), 250 + int(y + 0.5f) }, { 40 + int(x + 0.5f), 180 + int(y + 0.5f) }, { 255, 0, 0 });
+		haris::Renderer::drawShadedTriangle({ 100 + int(x + 0.5f), 100 + int(y + 0.5f) }, { 200 + int(x + 0.5f), 250 + int(y + 0.5f) }, { 40 + int(x + 0.5f), 180 + int(y + 0.5f) }, { 255, 0, 0 });
 
 		if (haris::Input::isKeyPressed(H_A))
 			x -= speed * delta;

@@ -54,6 +54,8 @@ namespace haris
 
 		static void drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color);
 
+		static void drawShadedTriangle(Point a, Point b, Point c, const RGBColor& color);
+
 		static void fillRectangle(const Rect& rect, const RGBColor& color);
 
 	private:

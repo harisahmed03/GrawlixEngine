@@ -5,6 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <iostream>
+#include <stdint.h>
 
 namespace haris {
 	using std::min;
@@ -18,7 +19,7 @@ namespace haris {
 			return;
 
 		//convert u8 colors to one u32
-		uint32_t raw_color = (color.red << 16) | (color.red << 8) | (color.blue << 0);
+		uint32_t raw_color = (color.red << 16) | (color.green << 8) | (color.blue << 0);
 
 		uint32_t* pixel = (uint32_t*)((uint8_t*)buffer.memory + x * bytes_per_pixel + y * buffer.pitch);
 		*pixel = raw_color;
@@ -65,30 +66,6 @@ namespace haris {
 		drawLine(c, a, color);
 	}
 
-	/*void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
-		int xMin = (std::min({ a.x, b.x, c.x }));
-		int xMax = (std::max({ a.x, b.x, c.x }));
-		int yMin = (std::min({ a.y, b.y, c.y }));
-		int yMax = (std::max({ a.y, b.y, c.y }));
-
-		bool isEntered = false;
-
-		for (int y = yMin; y < yMax; y++) {
-			for (int x = xMin; x < xMax; x++) {
-				if (isInside(a.x, a.y, b.x, b.y, c.x, c.y, x, y)) {
-					if (!isEntered) {
-						isEntered = true;
-					}
-					setPixel(x, y, color);
-				}
-				else if (isEntered) {
-					break;
-				}
-			}	
-			isEntered = false;
-		}		
-	}*/
-
 	void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
 		// Sort the points so that y0 <= y1 <= y2
 		if (b.y < a.y) {
@@ -115,7 +92,7 @@ namespace haris {
 
 		std::vector<float> xLeft;
 		std::vector<float> xRight;
-		if (xac[m] < xabc[m]) {
+		if (xac.at(m) < xabc.at(m)) {
 			xLeft = xac;
 			xRight = xabc;
 		}
@@ -141,6 +118,82 @@ namespace haris {
 		}
 	}
 
+	void Renderer::drawShadedTriangle(Point a, Point b, Point c, const RGBColor& color) {
+		// Sort the points so that y0 <= y1 <= y2
+		if (b.y < a.y) {
+			std::swap(a, b);
+		}
+		if (c.y < a.y) {
+			std::swap(a, c);
+		}
+		if (c.y < b.y) {
+			std::swap(c, b);
+		}
+
+		float h0 = 1.0f;	//point a intensity
+		float h1 = 0.5f;
+		float h2 = 0.1f;
+
+		std::vector<float> xab = interpolate(a.y, a.x, b.y, b.x);
+		std::vector<float> hab = interpolate(a.y, h0, b.y, h1);
+
+		std::vector<float> xbc = interpolate(b.y, b.x, c.y, c.x);
+		std::vector<float> hbc = interpolate(b.y, h1, c.y, h2);
+
+		std::vector<float> xac = interpolate(a.y, a.x, c.y, c.x);
+		std::vector<float> hac = interpolate(a.y, h0, c.y, h2);
+
+		xab.pop_back();
+		std::vector<float> xabc;
+		xabc.reserve(xab.size() + xbc.size());
+		xabc.insert(xabc.end(), xab.begin(), xab.end());
+		xabc.insert(xabc.end(), xbc.begin(), xbc.end());
+
+		hab.pop_back();
+		std::vector<float> habc;
+		habc.reserve(hab.size() + hbc.size());
+		habc.insert(habc.end(), hab.begin(), hab.end());
+		habc.insert(habc.end(), hbc.begin(), hbc.end());
+
+		int m = std::floor(xabc.size() / 2);
+
+		std::vector<float> xLeft;
+		std::vector<float> xRight;
+
+		std::vector<float> hLeft;
+		std::vector<float> hRight;
+
+		if (xac.at(m) < xabc.at(m)) {
+			xLeft = xac;
+			xRight = xabc;
+
+			hLeft = hac;
+			hRight = habc;
+		}
+		else {
+			xRight = xac;
+			xLeft = xabc;
+
+			hRight = hac;
+			hLeft = habc;
+		}
+
+		float xL;
+		float xR;
+
+		for (int y = a.y; y < c.y - 1; y++) {
+			xL = xLeft.at(y - a.y);
+			xR = xRight.at(y - a.y);
+
+			std::vector<float> hSegment = interpolate(xL, hLeft.at(y - a.y), xR, hRight.at(y - a.y));
+			for (int x = xL; x < xR; x++) {
+				float currentH = hSegment.at(x - xL);
+				RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
+				setPixel(x, y, shadedColor);
+			}
+		}
+	}
+
 	std::vector<float> Renderer::interpolate(int i0, float d0, int i1, float d1) {
 		std::vector<float> values;
 		if (i0 == i1) {
@@ -153,7 +206,7 @@ namespace haris {
 
 		values.reserve(i1 - i0);	//make room for elements
 
-		for (int i = i0; i < i1; i++) {
+		for (int i = i0; i <= i1; i++) {
 			values.push_back(d);
 			d += a;
 		}
