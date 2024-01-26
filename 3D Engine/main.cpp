@@ -14,9 +14,11 @@ framework_app_entry_point
 
 		static int frames = 0;
 		static float timePassed = 0.0;
+		static float theta = 0.0;
 
 		frames++;
 		timePassed += delta;
+		theta += 1.0f * delta;
 
 		if (timePassed >= 1.0f)
 		{
@@ -34,7 +36,9 @@ framework_app_entry_point
 
 		//haris::Renderer::drawLine(100, 10, 200, 10, { 255, 255, 255 });
 
-		haris::Renderer::drawShadedTriangle({ 100 + int(x + 0.5f), 100 + int(y + 0.5f) }, { 200 + int(x + 0.5f), 250 + int(y + 0.5f) }, { 40 + int(x + 0.5f), 180 + int(y + 0.5f) }, { 255, 0, 0 });
+		//haris::Renderer::drawShadedTriangle({ 100 + int(x + 0.5f), 100 + int(y + 0.5f) }, { 200 + int(x + 0.5f), 250 + int(y + 0.5f) }, { 40 + int(x + 0.5f), 180 + int(y + 0.5f) }, { 255, 0, 0 });
+
+		haris::Renderer::draw3dMesh(theta);
 
 		if (haris::Input::isKeyPressed(H_A))
 			x -= speed * delta;
