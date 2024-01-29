@@ -42,13 +42,19 @@ framework_app_entry_point
 		haris::Renderer::drawMeshes(theta);
 
 		if (haris::Input::isKeyPressed(H_A))
-			x -= speed * delta;
-		if (haris::Input::isKeyPressed(H_D))
-			x += speed * delta;
+			x = -1;
+		else if (haris::Input::isKeyPressed(H_D))
+			x = 1;
+		else
+			x = 0;
 		if (haris::Input::isKeyPressed(H_W))
-			y -= speed * delta;
-		if (haris::Input::isKeyPressed(H_S))
-			y += speed * delta;
+			y = -1;
+		else if (haris::Input::isKeyPressed(H_S))
+			y = 1;
+		else
+			y = 0;
+
+		haris::Renderer::moveCamera(x, y, 0,0,0,0);
 
 		//x = mousePosition.x;
 		//y = mousePosition.y;

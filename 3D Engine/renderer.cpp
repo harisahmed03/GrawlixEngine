@@ -17,7 +17,13 @@ namespace haris {
 	std::vector<mesh> myMeshes;
 
 	vec3d vCamera = { 0,0,0 };
+	vec3d vLookDir;
+	float cameraMoveSpeed = 0.5;
 	
+	void Renderer::moveCamera(float x, float y, float z, float xr, float yr, float zr) {
+		vec3d temp = { x*cameraMoveSpeed,y*cameraMoveSpeed,z*cameraMoveSpeed,0 };
+		vCamera = Vector_Add(vCamera, temp);
+	}
 	void Renderer::drawMeshes(float theta) {
 		draw3dMesh(meshCube, 0);
 	}
@@ -31,11 +37,19 @@ namespace haris {
 		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
 		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
 
+		vLookDir = { 0, 0, 1 };
+		vec3d vUp = { 0,1,0 };
+		vec3d vTarget = Vector_Add(vCamera, vLookDir);
+
+		mat4x4 matCamera = Matrix_PointAt(vCamera, vTarget, vUp);
+
+		mat4x4 matView = Matrix_QuickInverse(matCamera);
+
 		std::vector<triangle> vecTrianglesToRaster;
 
 		//draw triangles
 		for (auto tri : myMesh.tris) {
-			triangle triProjected, triTransformed;
+			triangle triProjected, triTransformed, triViewed;
 
 			triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
 			triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
@@ -51,10 +65,14 @@ namespace haris {
 
 			if(Vector_DotProduct(normal, vCameraRay) < 0.0f)
 			{
+				triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
+				triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
+				triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
+
 				//Apply projection matrix
-				triProjected.p[0] = Matrix_MultiplyVector(matProj, triTransformed.p[0]);
-				triProjected.p[1] = Matrix_MultiplyVector(matProj, triTransformed.p[1]);
-				triProjected.p[2] = Matrix_MultiplyVector(matProj, triTransformed.p[2]);
+				triProjected.p[0] = Matrix_MultiplyVector(matProj, triViewed.p[0]);
+				triProjected.p[1] = Matrix_MultiplyVector(matProj, triViewed.p[1]);
+				triProjected.p[2] = Matrix_MultiplyVector(matProj, triViewed.p[2]);
 
 				//Normalize
 				triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
@@ -105,6 +123,9 @@ namespace haris {
 		//outofbounds
 		if (x<=0 || x>=buffer.width || y<=0 || y>=buffer.height)
 			return;
+
+		x = buffer.width - x;
+		y = buffer.height - y;
 
 		//convert u8 colors to one u32
 		uint32_t raw_color = (color.red << 16) | (color.green << 8) | (color.blue << 0);

@@ -126,6 +126,8 @@ namespace haris
 
 		static void drawMeshes(float theta);
 
+		static void moveCamera(float x, float y, float z, float xr, float yr, float zr);
+
 	private:
 		static std::vector<float> interpolate(int i0, float d0, int i1, float d1);
 
@@ -253,7 +255,6 @@ namespace haris
 			matrix.m[2][0] = newForward.x;	matrix.m[2][1] = newForward.y;	matrix.m[2][2] = newForward.z;	matrix.m[2][3] = 0.0f;
 			matrix.m[3][0] = pos.x;			matrix.m[3][1] = pos.y;			matrix.m[3][2] = pos.z;			matrix.m[3][3] = 1.0f;
 			return matrix;
-
 		}
 
 		static mat4x4 Matrix_QuickInverse(mat4x4& m) // Only for Rotation/Translation Matrices
@@ -357,6 +358,7 @@ namespace haris
 
 			return meshCube;
 		}
+
 
 	private:
 		Renderer() { buffer = {}; clearColor = { 255, 255, 255 }; initVars(); };
