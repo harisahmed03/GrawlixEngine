@@ -5,10 +5,11 @@ framework_app_entry_point
 {
 	class Engine {
 
-};
+	};
 	//game init code
 	float x = 0, y = 0;
 	float speed = 100;
+
 	haris::Game::setGameUpdate([&](float delta) {
 		wchar_t charBuffer[256];
 
@@ -38,7 +39,7 @@ framework_app_entry_point
 
 		//haris::Renderer::drawShadedTriangle({ 100 + int(x + 0.5f), 100 + int(y + 0.5f) }, { 200 + int(x + 0.5f), 250 + int(y + 0.5f) }, { 40 + int(x + 0.5f), 180 + int(y + 0.5f) }, { 255, 0, 0 });
 
-		haris::Renderer::draw3dMesh(theta);
+		haris::Renderer::drawMeshes(theta);
 
 		if (haris::Input::isKeyPressed(H_A))
 			x -= speed * delta;

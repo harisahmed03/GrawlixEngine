@@ -11,177 +11,99 @@ namespace haris {
 	using std::min;
 	using std::max;
 
-	float fNear = 0.1f;
-	float fFar = 1000.0f;
-	float fFov = 90.0f;
-	float fAspectRatio = 1.0f;	//CHANGE THIS TO TAKE DIMENSIONS FROM WINDOW
-	float fFovRad = 1.0f / std::tanf(fFov * 0.5f / 180.0f * 3.14159);
-
 	mat4x4 matProj;
 
 	mesh meshCube;
+	std::vector<mesh> myMeshes;
 
 	vec3d vCamera = { 0,0,0 };
-
-	mat4x4 Renderer::getZRotationMatrix(float theta) {
-		mat4x4 matRotZ;
-		matRotZ.m[0][0] = cosf(theta);
-		matRotZ.m[0][1] = sinf(theta);
-		matRotZ.m[1][0] = -sinf(theta);
-		matRotZ.m[1][1] = cosf(theta);
-		matRotZ.m[2][2] = 1;
-		matRotZ.m[3][3] = 1;
-		return matRotZ;
-	}
-
-	mat4x4 Renderer::getXRotationMatrix(float theta) {
-		mat4x4 matRotX;
-		matRotX.m[0][0] = 1;
-		matRotX.m[1][1] = cosf(theta * 0.5f);
-		matRotX.m[1][2] = sinf(theta * 0.5f);
-		matRotX.m[2][1] = -sinf(theta * 0.5f);
-		matRotX.m[2][2] = cosf(theta * 0.5f);
-		matRotX.m[3][3] = 1;
-		return matRotX;
-	}
 	
-	void Renderer::draw3dMesh(float theta) {
+	void Renderer::drawMeshes(float theta) {
+		draw3dMesh(meshCube, 0);
+	}
+	void Renderer::draw3dMesh(mesh myMesh, float theta) {
 
-		// Set up rotation matrices
-		mat4x4 matRotZ, matRotX;
-		float fTheta = theta;
+		mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
+		mat4x4 matRotX = Matrix_MakeRotationX(theta/2);
 
-		// Rotation Z
-		matRotZ.m[0][0] = cosf(fTheta);
-		matRotZ.m[0][1] = sinf(fTheta);
-		matRotZ.m[1][0] = -sinf(fTheta);
-		matRotZ.m[1][1] = cosf(fTheta);
-		matRotZ.m[2][2] = 1;
-		matRotZ.m[3][3] = 1;
+		mat4x4 matTrans = Matrix_MakeTranslation(0.0f, 0.0f, 16.0f);
 
-		// Rotation X
-		matRotX.m[0][0] = 1;
-		matRotX.m[1][1] = cosf(fTheta * 0.5f);
-		matRotX.m[1][2] = sinf(fTheta * 0.5f);
-		matRotX.m[2][1] = -sinf(fTheta * 0.5f);
-		matRotX.m[2][2] = cosf(fTheta * 0.5f);
-		matRotX.m[3][3] = 1;
+		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
+
+		std::vector<triangle> vecTrianglesToRaster;
 
 		//draw triangles
-		for (auto tri : meshCube.tris) {
-			triangle triProjected, triTranslated, triRotatedZ, triRotatedX;
+		for (auto tri : myMesh.tris) {
+			triangle triProjected, triTransformed;
 
-			//rotate on z axis
-			MultiplyMatrixVector(tri.p[0], triRotatedZ.p[0], matRotZ);
-			MultiplyMatrixVector(tri.p[1], triRotatedZ.p[1], matRotZ);
-			MultiplyMatrixVector(tri.p[2], triRotatedZ.p[2], matRotZ);
-
-			//rotate on x axis
-			MultiplyMatrixVector(triRotatedZ.p[0], triRotatedX.p[0], matRotX);
-			MultiplyMatrixVector(triRotatedZ.p[1], triRotatedX.p[1], matRotX);
-			MultiplyMatrixVector(triRotatedZ.p[2], triRotatedX.p[2], matRotX);
-
-			//translate triangle
-			triTranslated = triRotatedX;
-			triTranslated.p[0].z = triRotatedX.p[0].z + 3.0f;
-			triTranslated.p[1].z = triRotatedX.p[1].z + 3.0f;
-			triTranslated.p[2].z = triRotatedX.p[2].z + 3.0f;
+			triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
+			triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
+			triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
 
 			vec3d normal, line1, line2;
-			line1.x = triTranslated.p[1].x - triTranslated.p[0].x;
-			line1.y = triTranslated.p[1].y - triTranslated.p[0].y;
-			line1.z = triTranslated.p[1].z - triTranslated.p[0].z;
+			line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
+			line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
+			normal = Vector_CrossProduct(line1, line2);
+			normal = Vector_Normalise(normal);
 
-			line2.x = triTranslated.p[2].x - triTranslated.p[0].x;
-			line2.y = triTranslated.p[2].y - triTranslated.p[0].y;
-			line2.z = triTranslated.p[2].z - triTranslated.p[0].z;
+			vec3d vCameraRay = Vector_Sub(triTransformed.p[0], vCamera);
 
-			normal.x = line1.y * line2.z - line1.z * line2.y;
-			normal.y = line1.z * line2.x - line1.x * line2.z;
-			normal.z = line1.x * line2.y - line1.y * line2.x;
-
-			float l = sqrtf(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
-			normal.x /= l; normal.y /= l; normal.z /= l;
-
-			//if (normal.z < 0)
-			if(normal.x * (triTranslated.p[0].x - vCamera.x) +
-				normal.y * (triTranslated.p[0].y - vCamera.y) +
-				normal.z * (triTranslated.p[0].z - vCamera.z) < 0.0f)
+			if(Vector_DotProduct(normal, vCameraRay) < 0.0f)
 			{
-				//Illumination
-				vec3d light_direction = { 0.0f, 0.0f, -1.0f };
-				float l = sqrtf(light_direction.x * light_direction.x + light_direction.y * light_direction.y + light_direction.z * light_direction.z);
-				light_direction.x /= l; light_direction.y /= l; light_direction.z /= l;
+				//Apply projection matrix
+				triProjected.p[0] = Matrix_MultiplyVector(matProj, triTransformed.p[0]);
+				triProjected.p[1] = Matrix_MultiplyVector(matProj, triTransformed.p[1]);
+				triProjected.p[2] = Matrix_MultiplyVector(matProj, triTransformed.p[2]);
 
-				float dp = normal.x * light_direction.x + normal.y * light_direction.y + normal.z * light_direction.z;
+				//Normalize
+				triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
+				triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
+				triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
 
+				vec3d vOffsetView = { 1,1,0 };
 
-				MultiplyMatrixVector(triTranslated.p[0], triProjected.p[0], matProj);
-				MultiplyMatrixVector(triTranslated.p[1], triProjected.p[1], matProj);
-				MultiplyMatrixVector(triTranslated.p[2], triProjected.p[2], matProj);
+				triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
+				triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
+				triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
 
-				//scale into view
-				triProjected.p[0].x += 1.0f; triProjected.p[0].y += 1.0f;
-				triProjected.p[1].x += 1.0f; triProjected.p[1].y += 1.0f;
-				triProjected.p[2].x += 1.0f; triProjected.p[2].y += 1.0f;
+				float myScale = 799.0f;
+				triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
+				triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
+				triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
 
-				triProjected.p[0].x *= 0.5f * 799.0f; triProjected.p[0].y *= 0.5f * 799.0f;
-				triProjected.p[1].x *= 0.5f * 799.0f; triProjected.p[1].y *= 0.5f * 799.0f;
-				triProjected.p[2].x *= 0.5f * 799.0f; triProjected.p[2].y *= 0.5f * 799.0f;
-
-				drawFilledTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
-					{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
-					{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, { 255,255,255 });
-				drawTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
-					{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
-					{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, { 255,0,255 });
-
+				vecTrianglesToRaster.push_back(triProjected);
 			}
 		}
+
+		// Sort triangles from back to front
+		std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
+			{
+				float z1 = (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f;
+				float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
+				return z1 > z2;
+			});
+
+		for (auto& triProjected : vecTrianglesToRaster) {
+			//Filled Body
+			drawFilledTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
+				{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
+				{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, myMesh.fillColor);
+
+			//Wireframe
+			drawTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
+				{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
+				{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, myMesh.outlineColor);
+		}
 	}
-	//Create init function
-
-	void Renderer::initVars() {
-		matProj.m[0][0] = fAspectRatio * fFovRad;
-		matProj.m[1][1] = fFovRad;
-		matProj.m[2][2] = fFar / (fFar - fNear);
-		matProj.m[3][2] = (-fFar * fNear) / (fFar - fNear);
-		matProj.m[2][3] = 1.0f;
-		matProj.m[3][3] = 0.0f;
-
-		meshCube.tris = {
-			// SOUTH
-			{ 0.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,    1.0f, 1.0f, 0.0f },
-			{ 0.0f, 0.0f, 0.0f,    1.0f, 1.0f, 0.0f,    1.0f, 0.0f, 0.0f },
-
-			// EAST                                                      
-			{ 1.0f, 0.0f, 0.0f,    1.0f, 1.0f, 0.0f,    1.0f, 1.0f, 1.0f },
-			{ 1.0f, 0.0f, 0.0f,    1.0f, 1.0f, 1.0f,    1.0f, 0.0f, 1.0f },
-
-			// NORTH                                                     
-			{ 1.0f, 0.0f, 1.0f,    1.0f, 1.0f, 1.0f,    0.0f, 1.0f, 1.0f },
-			{ 1.0f, 0.0f, 1.0f,    0.0f, 1.0f, 1.0f,    0.0f, 0.0f, 1.0f },
-
-			// WEST                                                      
-			{ 0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 1.0f,    0.0f, 1.0f, 0.0f },
-			{ 0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,    0.0f, 0.0f, 0.0f },
-
-			// TOP                                                       
-			{ 0.0f, 1.0f, 0.0f,    0.0f, 1.0f, 1.0f,    1.0f, 1.0f, 1.0f },
-			{ 0.0f, 1.0f, 0.0f,    1.0f, 1.0f, 1.0f,    1.0f, 1.0f, 0.0f },
-
-			// BOTTOM                                                    
-			{ 1.0f, 0.0f, 1.0f,    0.0f, 0.0f, 1.0f,    0.0f, 0.0f, 0.0f },
-			{ 1.0f, 0.0f, 1.0f,    0.0f, 0.0f, 0.0f,    1.0f, 0.0f, 0.0f },
-		};
-	}
+	
 
 	void Renderer::setPixel(int x, int y, const RGBColor& color) 
 	{
 		BitmapBuffer& buffer = getInstance().buffer;
 
 		//outofbounds
-		if (x<0 || x>buffer.width || y<0 || y>buffer.height)
+		if (x<=0 || x>=buffer.width || y<=0 || y>=buffer.height)
 			return;
 
 		//convert u8 colors to one u32
@@ -396,6 +318,17 @@ namespace haris {
 			}
 			row += buffer.pitch;
 		}
+	}
+
+	//Create init function
+	void Renderer::initVars() {
+		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
+
+		if (!meshCube.loadFromObjectFile("axis.txt")) {
+			exit(0);
+		}
+		meshCube.fillColor = { 200, 0, 0 };
+		meshCube.outlineColor = { 0, 255, 0 };
 	}
 
 	void Renderer::getWindowDimensions(int* outWidth, int* outHeight) {

@@ -138,6 +138,10 @@
     <ClInclude Include="input.h" />
     <ClInclude Include="renderer.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="axis.txt" />
+    <Text Include="Ship.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

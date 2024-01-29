@@ -42,4 +42,8 @@
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="Ship.txt" />
+    <Text Include="axis.txt" />
+  </ItemGroup>
 </Project>
