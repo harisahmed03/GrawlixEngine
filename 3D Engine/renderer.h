@@ -269,29 +269,6 @@ namespace haris
 			return matrix;
 		}
 
-		mat4x4 Matrix_PointAt(vec3d& pos, vec3d& target, vec3d& up)
-		{
-			// Calculate new forward direction
-			vec3d newForward = Vector_Sub(target, pos);
-			newForward = Vector_Normalise(newForward);
-
-			// Calculate new Up direction
-			vec3d a = Vector_Mul(newForward, Vector_DotProduct(up, newForward));
-			vec3d newUp = Vector_Sub(up, a);
-			newUp = Vector_Normalise(newUp);
-
-			// New Right direction is easy, its just cross product
-			vec3d newRight = Vector_CrossProduct(newUp, newForward);
-
-			// Construct Dimensioning and Translation Matrix	
-			mat4x4 matrix;
-			matrix.m[0][0] = newRight.x;	matrix.m[0][1] = newRight.y;	matrix.m[0][2] = newRight.z;	matrix.m[0][3] = 0.0f;
-			matrix.m[1][0] = newUp.x;		matrix.m[1][1] = newUp.y;		matrix.m[1][2] = newUp.z;		matrix.m[1][3] = 0.0f;
-			matrix.m[2][0] = newForward.x;	matrix.m[2][1] = newForward.y;	matrix.m[2][2] = newForward.z;	matrix.m[2][3] = 0.0f;
-			matrix.m[3][0] = pos.x;			matrix.m[3][1] = pos.y;			matrix.m[3][2] = pos.z;			matrix.m[3][3] = 1.0f;
-			return matrix;
-		}
-
 		static vec3d Vector_Add(vec3d& v1, vec3d& v2)
 		{
 			return { v1.x + v2.x, v1.y + v2.y, v1.z + v2.z };
