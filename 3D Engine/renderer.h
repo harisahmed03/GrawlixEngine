@@ -34,12 +34,13 @@ namespace haris
 
 	struct triangle {
 		vec3d p[3];
+		float h[3] = { 1.0f, 1.0f, 1.0f };
+		RGBColor fillColor;
+		RGBColor outlineColor;
 	};
 
 	struct mesh {
 		std::vector<triangle> tris;
-		RGBColor fillColor;
-		RGBColor outlineColor;
 
 		bool loadFromObjectFile(std::string sFilename)
 		{
@@ -76,6 +77,15 @@ namespace haris
 			}
 
 			return true;
+		}
+
+		void randomizeTriColors() {
+			for (int i = 0; i < tris.size(); i++) {
+				RGBColor f = { (uint8_t)(std::rand() % 255), (uint8_t)(std::rand() % 255), (uint8_t)(std::rand() % 255) };
+				RGBColor o = { (uint8_t)(std::rand() % 255), (uint8_t)(std::rand() % 255), (uint8_t)(std::rand() % 255) };
+				tris.at(i).fillColor = f;
+				tris.at(i).outlineColor = o;
+			}
 		}
 	};
 
@@ -116,7 +126,7 @@ namespace haris
 
 		static void drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color);
 
-		static void drawShadedTriangle(Point a, Point b, Point c, const RGBColor& color, float h0 = 0.3f, float h1 = 1.0f, float h2 = 0.5f);
+		static void drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0 = 0.3f, float h1 = 1.0f, float h2 = 0.5f);
 
 		static void fillRectangle(const Rect& rect, const RGBColor& color);
 
@@ -124,9 +134,9 @@ namespace haris
 
 		static void draw3dMesh(mesh myMesh, float fElapsedTime);
 
-		static void drawMeshes(float theta);
+		static void drawMeshes(float theta, float vol_l, float vol_r);
 
-		static void moveCamera(float x, float y, float z, float xr, float yr, float zr);
+		static void moveCamera(float x, float y, float z, float xr, float yr, float zr, float theta);
 
 	private:
 		static std::vector<float> interpolate(int i0, float d0, int i1, float d1);
@@ -222,6 +232,16 @@ namespace haris
 			matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
 			matrix.m[2][3] = 1.0f;
 			matrix.m[3][3] = 0.0f;
+			return matrix;
+		}
+
+		static mat4x4 Matrix_MakeScale(float x, float y, float z)
+		{
+			mat4x4 matrix;
+			matrix.m[0][0] = x;
+			matrix.m[1][1] = y;
+			matrix.m[2][2] = z;
+			matrix.m[3][3] = 1.0f;
 			return matrix;
 		}
 
@@ -327,38 +347,76 @@ namespace haris
 			return Vector_Add(lineStart, lineToIntersect);
 		}
 
-		static mesh getMeshCube() {
-			mesh meshCube;
-			meshCube.tris = {
-				// SOUTH
-				{ 0.0f, 0.0f, 0.0f,    0.0f, 1.0f, 0.0f,    1.0f, 1.0f, 0.0f },
-				{ 0.0f, 0.0f, 0.0f,    1.0f, 1.0f, 0.0f,    1.0f, 0.0f, 0.0f },
+		static int Triangle_ClipAgainstPlane(vec3d plane_p, vec3d plane_n, triangle& in_tri, triangle& out_tri1, triangle& out_tri2)
+		{
+			// Make sure plane normal is indeed normal
+			plane_n = Vector_Normalise(plane_n);
 
-				// EAST                                                      
-				{ 1.0f, 0.0f, 0.0f,    1.0f, 1.0f, 0.0f,    1.0f, 1.0f, 1.0f },
-				{ 1.0f, 0.0f, 0.0f,    1.0f, 1.0f, 1.0f,    1.0f, 0.0f, 1.0f },
+			// Return signed shortest distance from point to plane, plane normal must be normalised
+			auto dist = [&](vec3d& p)
+				{
+					vec3d n = Vector_Normalise(p);
+					return (plane_n.x * p.x + plane_n.y * p.y + plane_n.z * p.z - Vector_DotProduct(plane_n, plane_p));
+				};
 
-				// NORTH                                                     
-				{ 1.0f, 0.0f, 1.0f,    1.0f, 1.0f, 1.0f,    0.0f, 1.0f, 1.0f },
-				{ 1.0f, 0.0f, 1.0f,    0.0f, 1.0f, 1.0f,    0.0f, 0.0f, 1.0f },
+			vec3d* inside_points[3];  int nInsidePointCount = 0;
+			vec3d* outside_points[3]; int nOutsidePointCount = 0;
 
-				// WEST                                                      
-				{ 0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 1.0f,    0.0f, 1.0f, 0.0f },
-				{ 0.0f, 0.0f, 1.0f,    0.0f, 1.0f, 0.0f,    0.0f, 0.0f, 0.0f },
+			// Get signed distance of each point in triangle to plane
+			float d0 = dist(in_tri.p[0]);
+			float d1 = dist(in_tri.p[1]);
+			float d2 = dist(in_tri.p[2]);
 
-				// TOP                                                       
-				{ 0.0f, 1.0f, 0.0f,    0.0f, 1.0f, 1.0f,    1.0f, 1.0f, 1.0f },
-				{ 0.0f, 1.0f, 0.0f,    1.0f, 1.0f, 1.0f,    1.0f, 1.0f, 0.0f },
+			if (d0 >= 0) { inside_points[nInsidePointCount++] = &in_tri.p[0]; }
+			else { outside_points[nOutsidePointCount++] = &in_tri.p[0]; }
+			if (d1 >= 0) { inside_points[nInsidePointCount++] = &in_tri.p[1]; }
+			else { outside_points[nOutsidePointCount++] = &in_tri.p[1]; }
+			if (d2 >= 0) { inside_points[nInsidePointCount++] = &in_tri.p[2]; }
+			else { outside_points[nOutsidePointCount++] = &in_tri.p[2]; }
 
-				// BOTTOM                                                    
-				{ 1.0f, 0.0f, 1.0f,    0.0f, 0.0f, 1.0f,    0.0f, 0.0f, 0.0f },
-				{ 1.0f, 0.0f, 1.0f,    0.0f, 0.0f, 0.0f,    1.0f, 0.0f, 0.0f },
-			};
-			meshCube.outlineColor = { 255, 255, 255 };
+			if (nInsidePointCount == 0)
+			{
+				return 0; // No returned triangles are valid
+			}
 
-			return meshCube;
+			if (nInsidePointCount == 3)
+			{
+				out_tri1 = in_tri;
+			
+				return 1; // Just the one returned original triangle is valid
+			}
+
+			if (nInsidePointCount == 1 && nOutsidePointCount == 2)
+			{
+				out_tri1.fillColor = in_tri.fillColor;
+				out_tri1.outlineColor = in_tri.outlineColor;
+				out_tri1.p[0] = *inside_points[0];
+
+				out_tri1.p[1] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
+				out_tri1.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[1]);
+
+				return 1; // Return the newly formed single triangle
+			}
+
+			if (nInsidePointCount == 2 && nOutsidePointCount == 1)
+			{
+				out_tri1.fillColor = in_tri.fillColor;
+				out_tri1.outlineColor = in_tri.outlineColor;
+
+				out_tri2.fillColor = in_tri.fillColor;
+				out_tri2.outlineColor = in_tri.outlineColor;
+
+				out_tri1.p[0] = *inside_points[0];
+				out_tri1.p[1] = *inside_points[1];
+				out_tri1.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
+
+				out_tri2.p[0] = *inside_points[1];
+				out_tri2.p[1] = out_tri1.p[2];
+				out_tri2.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[1], *outside_points[0]);
+
+				return 2; // Return two newly formed triangles which form a quad
+			}
 		}
-
 
 	private:
 		Renderer() { buffer = {}; clearColor = { 255, 255, 255 }; initVars(); };

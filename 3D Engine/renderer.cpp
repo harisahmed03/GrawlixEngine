@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include <vector>
+#include <list>
 #include <cmath>
 #include <iostream>
 #include <stdint.h>
@@ -18,28 +19,42 @@ namespace haris {
 
 	vec3d vCamera = { 0,0,0 };
 	vec3d vLookDir;
-	float cameraMoveSpeed = 0.5;
+	float fYaw = 0;
+
+	float myL, myR;
+	float sensitivity = 10.0f;
+
+	float cameraMoveSpeed = 15;
 	
-	void Renderer::moveCamera(float x, float y, float z, float xr, float yr, float zr) {
-		vec3d temp = { x*cameraMoveSpeed,y*cameraMoveSpeed,z*cameraMoveSpeed,0 };
+	void Renderer::moveCamera(float x, float y, float z, float yaw, float yr, float zr, float theta) {
+		vec3d temp = { x*cameraMoveSpeed * theta, y*cameraMoveSpeed * theta, z* cameraMoveSpeed * theta,0 };
 		vCamera = Vector_Add(vCamera, temp);
+		fYaw += yaw * (cameraMoveSpeed/4) * theta;
 	}
-	void Renderer::drawMeshes(float theta) {
-		draw3dMesh(meshCube, 0);
+	void Renderer::drawMeshes(float theta, float vol_l, float vol_r) {
+		myL = vol_l;
+		myR = vol_r;
+		draw3dMesh(meshCube, theta);
 	}
 	void Renderer::draw3dMesh(mesh myMesh, float theta) {
 
 		mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
 		mat4x4 matRotX = Matrix_MakeRotationX(theta/2);
 
-		mat4x4 matTrans = Matrix_MakeTranslation(0.0f, 0.0f, 16.0f);
+		mat4x4 matTrans = Matrix_MakeTranslation(0.0f, 0.0f, 15.0f);
 
+		float volStuff = 1.0f + (myL * sensitivity);
+		mat4x4 matScale = Matrix_MakeScale(volStuff, volStuff, volStuff);
 		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+		matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
 		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
 
-		vLookDir = { 0, 0, 1 };
 		vec3d vUp = { 0,1,0 };
-		vec3d vTarget = Vector_Add(vCamera, vLookDir);
+		vec3d vTarget = { 0, 0, 1 };
+		
+		mat4x4 matCameraRot = Matrix_MakeRotationY(fYaw);
+		vLookDir = Matrix_MultiplyVector(matCameraRot, vTarget);
+		vTarget = Vector_Add(vCamera, vLookDir);
 
 		mat4x4 matCamera = Matrix_PointAt(vCamera, vTarget, vUp);
 
@@ -69,28 +84,38 @@ namespace haris {
 				triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
 				triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
 
-				//Apply projection matrix
-				triProjected.p[0] = Matrix_MultiplyVector(matProj, triViewed.p[0]);
-				triProjected.p[1] = Matrix_MultiplyVector(matProj, triViewed.p[1]);
-				triProjected.p[2] = Matrix_MultiplyVector(matProj, triViewed.p[2]);
+				int nClippedTriangles = 0;
+				triangle clipped[2];
+				nClippedTriangles = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.1f }, { 0.0f, 0.0f, 1.0f }, triViewed, clipped[0], clipped[1]);
 
-				//Normalize
-				triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
-				triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
-				triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
+				for (int n = 0; n < nClippedTriangles; n++)
+				{
+					//Apply projection matrix
+					triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
+					triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
+					triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
 
-				vec3d vOffsetView = { 1,1,0 };
+					//Normalize
+					triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
+					triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
+					triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
 
-				triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
-				triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
-				triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
+					vec3d vOffsetView = { 1,1,0 };
 
-				float myScale = 799.0f;
-				triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
-				triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
-				triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
+					triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
+					triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
+					triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
 
-				vecTrianglesToRaster.push_back(triProjected);
+					float myScale = 799.0f;
+					triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
+					triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
+					triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
+
+					triProjected.fillColor = tri.fillColor;
+					triProjected.outlineColor = tri.outlineColor;
+
+					vecTrianglesToRaster.push_back(triProjected);
+				}
 			}
 		}
 
@@ -101,17 +126,59 @@ namespace haris {
 				float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
 				return z1 > z2;
 			});
+		for (auto& triToRaster : vecTrianglesToRaster)
+		{
+			// Clip triangles against all four screen edges, this could yield
+			// a bunch of triangles, so create a queue that we traverse to 
+			//  ensure we only test new triangles generated against planes
+			triangle clipped[2];
+			std::list<triangle> listTriangles;
 
-		for (auto& triProjected : vecTrianglesToRaster) {
-			//Filled Body
-			drawFilledTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
-				{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
-				{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, myMesh.fillColor);
+			// Add initial triangle
+			listTriangles.push_back(triToRaster);
+			int nNewTriangles = 1;
 
-			//Wireframe
-			drawTriangle({ (int)triProjected.p[0].x, (int)triProjected.p[0].y },
-				{ (int)triProjected.p[1].x, (int)triProjected.p[1].y },
-				{ (int)triProjected.p[2].x, (int)triProjected.p[2].y }, myMesh.outlineColor);
+			for (int p = 0; p < 4; p++)
+			{
+				int nTrisToAdd = 0;
+				while (nNewTriangles > 0)
+				{
+					// Take triangle from front of queue
+					triangle test = listTriangles.front();
+					listTriangles.pop_front();
+					nNewTriangles--;
+
+					// Clip it against a plane. We only need to test each 
+					// subsequent plane, against subsequent new triangles
+					// as all triangles after a plane clip are guaranteed
+					// to lie on the inside of the plane. I like how this
+					// comment is almost completely and utterly justified
+					switch (p)
+					{
+					case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+					case 1:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, (float)800 - 1, 0.0f }, { 0.0f, -1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+					case 2:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+					case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+					}
+
+					// Clipping may yield a variable number of triangles, so
+					// add these new ones to the back of the queue for subsequent
+					// clipping against next planes
+					for (int w = 0; w < nTrisToAdd; w++)
+						listTriangles.push_back(clipped[w]);
+				}
+				nNewTriangles = listTriangles.size();
+			}
+
+			for (auto& t : listTriangles) {
+
+				//drawShadedTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
+
+				//Wireframe
+				drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
+					{ (int)t.p[1].x, (int)t.p[1].y },
+					{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
+			}
 		}
 	}
 	
@@ -210,16 +277,24 @@ namespace haris {
 			xLeft = xabc;
 		}
 
+		BitmapBuffer& buffer = getInstance().buffer;
+
 		for (int y = a.y; y < c.y-1; y++) {
 			for (int x = xLeft.at(y - a.y); x < xRight.at(y - a.y); x++) {
-				std::cout << x;
-				std::cout << y;
-				setPixel(x, y, color);
+				//setPixel(x, y, color);
+				//convert u8 colors to one u32
+				uint32_t raw_color = (color.red << 16) | (color.green << 8) | (color.blue << 0);
+				int tempX = buffer.width - x;
+				int tempY = buffer.height - y;
+				if (tempX>0 && tempX<buffer.width && tempY>0 && tempY<buffer.height) {
+					uint32_t* pixel = (uint32_t*)((uint8_t*)buffer.memory + tempX * bytes_per_pixel + tempY * buffer.pitch);
+					*pixel = raw_color;
+				}
 			}
 		}
 	}
 
-	void Renderer::drawShadedTriangle(Point a, Point b, Point c, const RGBColor& color, float h0 , float h1, float h2) {
+	void Renderer::drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0 , float h1, float h2) {
 		// Sort the points so that y0 <= y1 <= y2
 		if (b.y < a.y) {
 			std::swap(a, b);
@@ -281,6 +356,8 @@ namespace haris {
 		float xL;
 		float xR;
 
+		BitmapBuffer& buffer = getInstance().buffer;
+
 		for (int y = a.y; y < c.y - 1; y++) {
 			xL = xLeft.at(y - a.y);
 			xR = xRight.at(y - a.y);
@@ -289,7 +366,13 @@ namespace haris {
 			for (int x = xL; x <= xR; x++) {
 				float currentH = hSegment.at(x - xL);
 				RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
-				setPixel(x, y, shadedColor);
+				uint32_t raw_color = (shadedColor.red << 16) | (shadedColor.green << 8) | (shadedColor.blue << 0);
+				int tempX = buffer.width - x;
+				int tempY = buffer.height - y;
+				if (tempX > 0 && tempX < buffer.width && tempY>0 && tempY < buffer.height) {
+					uint32_t* pixel = (uint32_t*)((uint8_t*)buffer.memory + tempX * bytes_per_pixel + tempY * buffer.pitch);
+					*pixel = raw_color;
+				}
 			}
 		}
 	}
@@ -304,7 +387,7 @@ namespace haris {
 		float a = (d1 - d0) / (static_cast<float>(i1) - static_cast<float>(i0));
 		float d = d0;
 
-		values.reserve(i1 - i0);	//make room for elements
+		values.reserve(i1 - i0 + 1);	//make room for elements
 
 		for (int i = i0; i <= i1; i++) {
 			values.push_back(d);
@@ -345,11 +428,12 @@ namespace haris {
 	void Renderer::initVars() {
 		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
 
-		if (!meshCube.loadFromObjectFile("axis.txt")) {
+		meshCube.loadFromObjectFile("Cube.txt");
+		if (meshCube.tris.size() == 0) {
 			exit(0);
 		}
-		meshCube.fillColor = { 200, 0, 0 };
-		meshCube.outlineColor = { 0, 255, 0 };
+
+		meshCube.randomizeTriColors();
 	}
 
 	void Renderer::getWindowDimensions(int* outWidth, int* outHeight) {
