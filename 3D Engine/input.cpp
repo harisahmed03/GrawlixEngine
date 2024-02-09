@@ -151,4 +151,8 @@ namespace haris {
 		mouse.position.x = GET_X_LPARAM(lParam);
 		mouse.position.y = GET_Y_LPARAM(lParam);
 	}
+
+	void Input::setMousePosition(Position newPos) {
+		SetCursorPos(newPos.x, newPos.y);
+	}
 }

@@ -52,6 +52,7 @@
     <Text Include="Ship.txt" />
     <Text Include="axis.txt" />
     <Text Include="Cube.txt" />
+    <Text Include="FlatGround.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

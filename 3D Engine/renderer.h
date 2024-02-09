@@ -6,6 +6,7 @@
 #include <cmath>
 #include <fstream>
 #include <strstream>
+#include "input.h"
 
 namespace haris
 {
@@ -41,6 +42,16 @@ namespace haris
 
 	struct mesh {
 		std::vector<triangle> tris;
+		vec3d coordinates = { 0, 0, 0 };
+		vec3d rotation = { 0, 0, 0 };
+		vec3d scale = { 1, 1, 1 };
+
+		bool linkVolume = false;
+		bool linkFrequency = false;
+		bool linkPitch = false;
+		bool drawWireframe = false;
+		bool drawFilled = true;
+		bool drawShaded = false;
 
 		bool loadFromObjectFile(std::string sFilename)
 		{
@@ -55,19 +66,15 @@ namespace haris
 			{
 				char line[128];
 				f.getline(line, 128);
-
 				std::strstream s;
 				s << line;
-
 				char junk;
-
 				if (line[0] == 'v')
 				{
 					vec3d v;
 					s >> junk >> v.x >> v.y >> v.z;
 					verts.push_back(v);
 				}
-
 				if (line[0] == 'f')
 				{
 					int f[3];
@@ -75,7 +82,6 @@ namespace haris
 					tris.push_back({ verts[f[0] - 1], verts[f[1] - 1], verts[f[2] - 1] });
 				}
 			}
-
 			return true;
 		}
 
@@ -87,6 +93,15 @@ namespace haris
 				tris.at(i).outlineColor = o;
 			}
 		}
+	};
+
+	struct Camera {
+		vec3d vCamera = { 0,10,-15 };
+		vec3d vLookDir;
+		float horizontalYaw = 0;
+		float verticalYaw = 0;
+		float moveSpeed = 15;
+		float lookSpeed = 5;
 	};
 
 	class Renderer {
@@ -132,11 +147,15 @@ namespace haris
 
 		static void initVars();
 
-		static void draw3dMesh(mesh myMesh, float fElapsedTime);
+		static void display2DFrequencyBars();
 
-		static void drawMeshes(float theta, float vol_l, float vol_r);
+		static void display3DFrequencyBars(float theta);
 
-		static void moveCamera(float x, float y, float z, float xr, float yr, float zr, float theta);
+		static void draw3dMesh(mesh myMesh, float fElapsedTime, mat4x4 matView);
+
+		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freqD);
+
+		static void moveCamera(float deltaTime);
 
 	private:
 		static std::vector<float> interpolate(int i0, float d0, int i1, float d1);
@@ -441,5 +460,6 @@ namespace haris
 		static void coppyBufferToWindow(HDC deviceContext, int windowWidth, int windowHeight);
 
 		static void clear();
+
 	};
 }

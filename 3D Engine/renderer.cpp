@@ -14,51 +14,269 @@ namespace haris {
 
 	mat4x4 matProj;
 
-	mesh meshCube;
-	std::vector<mesh> myMeshes;
+	std::list<mesh> myMeshes;
 
-	vec3d vCamera = { 0,0,0 };
-	vec3d vLookDir;
-	float fYaw = 0;
+	Camera myCamera;
 
 	float myL, myR;
-	float sensitivity = 10.0f;
+	float* freq;
+	float sensitivity = 15.0f;
 
-	float cameraMoveSpeed = 15;
-	
-	void Renderer::moveCamera(float x, float y, float z, float yaw, float yr, float zr, float theta) {
-		vec3d temp = { x*cameraMoveSpeed * theta, y*cameraMoveSpeed * theta, z* cameraMoveSpeed * theta,0 };
-		vCamera = Vector_Add(vCamera, temp);
-		fYaw += yaw * (cameraMoveSpeed/4) * theta;
+	int screenWidth, screenHeight;
+
+
+	void Renderer::moveCamera(float deltaTime) {
+		float x = 0;
+		float y = 0;
+		float z = 0;
+		float horizontalYaw = 0;
+		float verticalYaw = 0;
+		if (haris::Input::isKeyPressed(H_A))
+			x = 1;
+		else if (haris::Input::isKeyPressed(H_D))
+			x = -1;
+
+		if (haris::Input::isKeyPressed(H_SPACE))
+			y = 1;
+		else if (haris::Input::isKeyPressed(H_SHIFT))
+			y = -1;
+
+		if (haris::Input::isKeyPressed(H_W))
+			z = 1;
+		else if (haris::Input::isKeyPressed(H_S))
+			z = -1;
+
+		if (haris::Input::isKeyPressed(H_RIGHT))
+			horizontalYaw = 1;
+		else if (haris::Input::isKeyPressed(H_LEFT))
+			horizontalYaw = -1;
+
+		if (haris::Input::isKeyPressed(H_UP))
+			verticalYaw = 1;
+		else if (haris::Input::isKeyPressed(H_DOWN))
+			verticalYaw = -1;
+
+
+		
+
+		haris::Input::Position mousePosition = haris::Input::getMousePosition();
+		//haris::Input::setMousePosition({ 0, 0 });
+		float lookSpeed = 0.3f;
+		int rotX = (int)(lookSpeed * deltaTime * float(screenWidth / 2 - mousePosition.x));
+		int rotY = (int)(lookSpeed * deltaTime * float(screenHeight / 2 - mousePosition.y));
+
+		vec3d position = { x * myCamera.moveSpeed * deltaTime, y * myCamera.moveSpeed * deltaTime, z * myCamera.moveSpeed * deltaTime };
+		myCamera.vCamera = Vector_Add(myCamera.vCamera, position);
+		myCamera.horizontalYaw += horizontalYaw * myCamera.lookSpeed * deltaTime;
+		myCamera.verticalYaw += verticalYaw * myCamera.lookSpeed * deltaTime;
 	}
-	void Renderer::drawMeshes(float theta, float vol_l, float vol_r) {
+	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freqD) {
 		myL = vol_l;
 		myR = vol_r;
-		draw3dMesh(meshCube, theta);
-	}
-	void Renderer::draw3dMesh(mesh myMesh, float theta) {
-
-		mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
-		mat4x4 matRotX = Matrix_MakeRotationX(theta/2);
-
-		mat4x4 matTrans = Matrix_MakeTranslation(0.0f, 0.0f, 15.0f);
-
-		float volStuff = 1.0f + (myL * sensitivity);
-		mat4x4 matScale = Matrix_MakeScale(volStuff, volStuff, volStuff);
-		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
-		matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
-		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
+		freq = freqD;
+		moveCamera(delta);
 
 		vec3d vUp = { 0,1,0 };
 		vec3d vTarget = { 0, 0, 1 };
-		
-		mat4x4 matCameraRot = Matrix_MakeRotationY(fYaw);
-		vLookDir = Matrix_MultiplyVector(matCameraRot, vTarget);
-		vTarget = Vector_Add(vCamera, vLookDir);
 
-		mat4x4 matCamera = Matrix_PointAt(vCamera, vTarget, vUp);
+		mat4x4 matCameraRotX = Matrix_MakeRotationX(myCamera.verticalYaw);
+		mat4x4 matCameraRotY = Matrix_MakeRotationY(myCamera.horizontalYaw);
+		myCamera.vLookDir = Matrix_MultiplyVector(matCameraRotX, vTarget);
+		myCamera.vLookDir = Matrix_MultiplyVector(matCameraRotY, myCamera.vLookDir);
+		vTarget = Vector_Add(myCamera.vCamera, myCamera.vLookDir);
+
+		mat4x4 matCamera = Matrix_PointAt(myCamera.vCamera, vTarget, vUp);
 
 		mat4x4 matView = Matrix_QuickInverse(matCamera);
+
+		//display3DFrequencyBars(theta);
+		for (auto& m : myMeshes) {
+			draw3dMesh(m, 0, matView);
+		}
+		
+		//display2DFrequencyBars();	
+	}
+
+	void Renderer::display2DFrequencyBars() {
+		int numBars = 100;
+		int barWidth = 5;
+		int sens = 10;
+		int startX = 100;
+
+		for (int i = 0; i < numBars; i++) {
+			Rect bar = { startX + (barWidth * i), 300, barWidth, (int)(freq[i] * sens) };
+			Renderer::fillRectangle(bar, {255,0,0});
+		}
+	}
+
+	void Renderer::display3DFrequencyBars(float theta) {
+		int numBars = 100;
+		float barWidth = 0.1f;
+		int sens = 1;
+		int startX = 100;
+
+		mesh grandMesh;
+		grandMesh.loadFromObjectFile("Cube.txt");
+
+		for (int b = 0; b < numBars; b++) {
+			mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
+			mat4x4 matRotX = Matrix_MakeRotationY(theta / 2);
+
+			mat4x4 matTrans = Matrix_MakeTranslation(-20 + ((barWidth*5) * b), 0.0f, 50.0f);
+
+			float volStuff = 1.0f + (myL * sensitivity);
+			mat4x4 matScale = Matrix_MakeScale(barWidth, (freq[b] * sens), barWidth*10);
+			mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+			matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
+			matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
+
+			vec3d vUp = { 0,1,0 };
+			vec3d vTarget = { 0, 0, 1 };
+
+			mat4x4 matCameraRot = Matrix_MakeRotationY(myCamera.horizontalYaw);
+			myCamera.vLookDir = Matrix_MultiplyVector(matCameraRot, vTarget);
+			vTarget = Vector_Add(myCamera.vCamera, myCamera.vLookDir);
+
+			mat4x4 matCamera = Matrix_PointAt(myCamera.vCamera, vTarget, vUp);
+
+			mat4x4 matView = Matrix_QuickInverse(matCamera);
+
+			std::vector<triangle> vecTrianglesToRaster;
+
+			mesh myMesh = grandMesh;
+
+			//draw triangles
+			for (auto tri : myMesh.tris) {
+				triangle triProjected, triTransformed, triViewed;
+
+				triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
+				triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
+				triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
+
+				vec3d normal, line1, line2;
+				line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
+				line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
+				normal = Vector_CrossProduct(line1, line2);
+				normal = Vector_Normalise(normal);
+
+				vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
+
+				if (Vector_DotProduct(normal, vCameraRay) < 0.0f)
+				{
+					triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
+					triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
+					triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
+
+					int nClippedTriangles = 0;
+					triangle clipped[2];
+					nClippedTriangles = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.1f }, { 0.0f, 0.0f, 1.0f }, triViewed, clipped[0], clipped[1]);
+
+					for (int n = 0; n < nClippedTriangles; n++)
+					{
+						//Apply projection matrix
+						triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
+						triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
+						triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
+
+						//Normalize
+						triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
+						triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
+						triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
+
+						vec3d vOffsetView = { 1,1,0 };
+
+						triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
+						triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
+						triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
+
+						float myScale = 799.0f;
+						triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
+						triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
+						triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
+
+						triProjected.fillColor = tri.fillColor;
+						triProjected.outlineColor = tri.outlineColor;
+
+						vecTrianglesToRaster.push_back(triProjected);
+					}
+				}
+			}
+
+			// Sort triangles from back to front
+			std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
+				{
+					float z1 = (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f;
+					float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
+					return z1 > z2;
+				});
+			for (auto& triToRaster : vecTrianglesToRaster)
+			{
+
+				triangle clipped[2];
+				std::list<triangle> listTriangles;
+
+				// Add initial triangle
+				listTriangles.push_back(triToRaster);
+				int nNewTriangles = 1;
+
+				for (int p = 0; p < 4; p++)
+				{
+					int nTrisToAdd = 0;
+					while (nNewTriangles > 0)
+					{
+						// Take triangle from front of queue
+						triangle test = listTriangles.front();
+						listTriangles.pop_front();
+						nNewTriangles--;
+
+						switch (p)
+						{
+						case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 1:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, (float)800 - 1, 0.0f }, { 0.0f, -1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 2:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						}
+
+						for (int w = 0; w < nTrisToAdd; w++)
+							listTriangles.push_back(clipped[w]);
+					}
+					nNewTriangles = listTriangles.size();
+				}
+
+				for (auto& t : listTriangles) {
+
+					//drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, { 0,255,0 });
+
+					//Wireframe
+					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
+						{ (int)t.p[1].x, (int)t.p[1].y },
+						{ (int)t.p[2].x, (int)t.p[2].y }, {255, 0, 0});
+				}
+			}
+		}
+	}
+	
+	void Renderer::draw3dMesh(mesh myMesh, float theta, mat4x4 matView) {
+
+		mat4x4 matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
+		mat4x4 matRotY = Matrix_MakeRotationZ(myMesh.rotation.y);
+		mat4x4 matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
+
+		
+		mat4x4 matScale;
+		if (myMesh.linkVolume) {
+			float volStuff = 1.0f + (myL * sensitivity);
+			matScale = Matrix_MakeScale(myMesh.scale.x + volStuff, myMesh.scale.y + volStuff, myMesh.scale.z + volStuff);
+		}
+		else {
+			matScale = Matrix_MakeScale(myMesh.scale.x, myMesh.scale.y, myMesh.scale.z);
+		}
+		
+		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+		mat4x4 matTrans = Matrix_MakeTranslation(myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z);
+
+		matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
+		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
 
 		std::vector<triangle> vecTrianglesToRaster;
 
@@ -76,7 +294,7 @@ namespace haris {
 			normal = Vector_CrossProduct(line1, line2);
 			normal = Vector_Normalise(normal);
 
-			vec3d vCameraRay = Vector_Sub(triTransformed.p[0], vCamera);
+			vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
 
 			if(Vector_DotProduct(normal, vCameraRay) < 0.0f)
 			{
@@ -128,9 +346,6 @@ namespace haris {
 			});
 		for (auto& triToRaster : vecTrianglesToRaster)
 		{
-			// Clip triangles against all four screen edges, this could yield
-			// a bunch of triangles, so create a queue that we traverse to 
-			//  ensure we only test new triangles generated against planes
 			triangle clipped[2];
 			std::list<triangle> listTriangles;
 
@@ -148,11 +363,6 @@ namespace haris {
 					listTriangles.pop_front();
 					nNewTriangles--;
 
-					// Clip it against a plane. We only need to test each 
-					// subsequent plane, against subsequent new triangles
-					// as all triangles after a plane clip are guaranteed
-					// to lie on the inside of the plane. I like how this
-					// comment is almost completely and utterly justified
 					switch (p)
 					{
 					case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
@@ -161,9 +371,6 @@ namespace haris {
 					case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
 					}
 
-					// Clipping may yield a variable number of triangles, so
-					// add these new ones to the back of the queue for subsequent
-					// clipping against next planes
 					for (int w = 0; w < nTrisToAdd; w++)
 						listTriangles.push_back(clipped[w]);
 				}
@@ -172,17 +379,24 @@ namespace haris {
 
 			for (auto& t : listTriangles) {
 
-				//drawShadedTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
-
-				//Wireframe
-				drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
-					{ (int)t.p[1].x, (int)t.p[1].y },
-					{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
+				if (myMesh.drawShaded) {
+					drawShadedTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y },
+						{ (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
+				}
+				if (myMesh.drawWireframe) {
+					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
+						{ (int)t.p[1].x, (int)t.p[1].y },
+						{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
+				}
+				if (myMesh.drawFilled) {
+					drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y },
+						{ (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
+				}
+				
 			}
 		}
 	}
 	
-
 	void Renderer::setPixel(int x, int y, const RGBColor& color) 
 	{
 		BitmapBuffer& buffer = getInstance().buffer;
@@ -426,14 +640,36 @@ namespace haris {
 
 	//Create init function
 	void Renderer::initVars() {
+		screenHeight = 800;
+		screenWidth = 800;
 		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
 
+		//Cube
+		mesh meshCube;
 		meshCube.loadFromObjectFile("Cube.txt");
 		if (meshCube.tris.size() == 0) {
 			exit(0);
 		}
-
 		meshCube.randomizeTriColors();
+		meshCube.coordinates = { 0, 5, 0, 0 };
+		meshCube.rotation = { 0, 0, 0, 0 };
+		meshCube.drawFilled = true;
+		meshCube.drawShaded = false;
+		meshCube.drawWireframe = false;
+		myMeshes.push_back(meshCube);
+
+		//Ground
+		mesh meshFlatGround;
+		meshFlatGround.loadFromObjectFile("FlatGround.txt");
+		if (meshCube.tris.size() == 0) {
+			exit(0);
+		}
+		meshFlatGround.randomizeTriColors();
+		meshFlatGround.scale = { 1, 1, 1, 0 };
+		meshFlatGround.drawFilled = true;
+		meshFlatGround.drawShaded = false;
+		meshFlatGround.drawWireframe = false;
+		myMeshes.push_back(meshFlatGround);
 	}
 
 	void Renderer::getWindowDimensions(int* outWidth, int* outHeight) {

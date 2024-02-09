@@ -122,6 +122,8 @@ namespace haris {
 
 		static Position getMousePosition();
 
+		static void setMousePosition(Position newPos);
+
 		static bool isMouseButtonPressed(unsigned int buttonCode);
 
 		static bool isMouseButtonReleased(unsigned int buttonCode);

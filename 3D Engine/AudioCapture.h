@@ -8,7 +8,7 @@
 namespace haris {
 	class AudioCapture {
 	public:
-		AudioCapture(float* voll, float* volr);
+		AudioCapture(float* voll, float* volr, float* freqD);
 		PaError err;
 
 		static void checkErr(PaError err) {
@@ -32,6 +32,10 @@ namespace haris {
 
 		static inline float mymax(float a, float b) {
 			return a > b ? a : b;
+		}
+
+		static inline float mymin(float a, float b) {
+			return a < b ? a : b;
 		}
 	};
 }

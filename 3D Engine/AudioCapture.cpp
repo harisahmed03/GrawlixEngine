@@ -1,17 +1,38 @@
 ﻿#include <stdlib.h>
 #include "AudioCapture.h"
+#include <fftw3.h>
+#include <cmath>
 
 #define SAMPLE_RATE 44100
-#define FRAMES_PER_BUFFER 512
+#define FRAMES_PER_BUFFER 1024
+#define NUM_CHANNELS 2
+
+#define SPECTRO_FREQ_START 20
+#define SPECTRO_FREQ_END 1000
+
 namespace haris {
+
+    typedef struct {
+        double* in;
+        double* out;
+        fftw_plan p;
+        int startIndex;
+        int spectroSize;
+    } streamCallbackData;
+
+    static streamCallbackData* spectroData;
 
     float* vol_l;
     float* vol_r;
 
+    float* freqDisplay;
+
     PaStream* stream;
-	AudioCapture::AudioCapture(float* voll, float* volr) {
+	AudioCapture::AudioCapture(float* voll, float* volr, float* freqD) {
         vol_l = voll;
         vol_r = volr;
+        freqDisplay = freqD;
+        freqDisplay = freqD;
 		init();
 	}
 
@@ -22,9 +43,22 @@ namespace haris {
     ) {
         float* in = (float*)inputBuffer;
         (void)outputBuffer;
+        streamCallbackData* callbackData = (streamCallbackData*)userData;
 
         int dispSize = 100;
-        printf("\r");
+
+        for (unsigned long i = 0; i < framesPerBuffer; i++) {
+            callbackData->in[i] = (in[i * NUM_CHANNELS]);
+        }
+
+        fftw_execute(callbackData->p);
+
+        for (int i = 0; i < dispSize; i++) {
+            //double proportion = std::pow(i / (double)dispSize, 3);
+            double proportion = i / (double)dispSize;
+            double frequency = callbackData->out[(int)(callbackData->startIndex + proportion * callbackData->spectroSize)];
+            freqDisplay[i] = frequency;
+        }
 
         float temp_vol_l = 0;
         float temp_vol_r = 0;
@@ -37,24 +71,6 @@ namespace haris {
         *vol_l = temp_vol_l;
         *vol_r = temp_vol_r;
 
-        /*for (int i = 0; i < dispSize; i++) {
-            float barProportion = i / (float)dispSize;
-            if (barProportion <= vol_l && barProportion <= vol_r) {
-                printf("█");
-            }
-            else if (barProportion <= vol_l) {
-                printf("▀");
-            }
-            else if (barProportion <= vol_r) {
-                printf("▄");
-            }
-            else {
-                printf(" ");
-            }
-        }*/
-
-        fflush(stdout);
-
         return 0;
     }
 
@@ -62,6 +78,21 @@ namespace haris {
         PaError err;
         err = Pa_Initialize();
         AudioCapture::checkErr(err);
+
+        spectroData = (streamCallbackData*)malloc(sizeof(streamCallbackData));
+        spectroData->in = (double*)malloc(sizeof(double) * FRAMES_PER_BUFFER);
+        spectroData->out = (double*)malloc(sizeof(double) * FRAMES_PER_BUFFER);
+        if (spectroData->in == NULL || spectroData->out == NULL) {
+            printf("Could not allocate spectro data\n");
+            exit(EXIT_FAILURE);
+        }
+        spectroData->p = fftw_plan_r2r_1d(
+            FRAMES_PER_BUFFER, spectroData->in,
+            spectroData->out, FFTW_R2HC, FFTW_ESTIMATE
+        );
+        double sampleRatio = FRAMES_PER_BUFFER / (double)SAMPLE_RATE;
+        spectroData->startIndex = std::ceil(sampleRatio * SPECTRO_FREQ_START);
+        spectroData->spectroSize = mymin(std::ceil(sampleRatio * SPECTRO_FREQ_END), FRAMES_PER_BUFFER/2.0) - spectroData->startIndex;
 
         int numDevices = Pa_GetDeviceCount();
         printf("Number of devices: %d\n", numDevices);
@@ -86,34 +117,26 @@ namespace haris {
         }
 
         int inputdevice = 0;
-        int outputdevice = 3;
 
         PaStreamParameters inputParameters;
         PaStreamParameters outputParameters;
 
         memset(&inputParameters, 0, sizeof(inputParameters));
-        inputParameters.channelCount = 2;
+        inputParameters.channelCount = NUM_CHANNELS;
         inputParameters.device = inputdevice;
         inputParameters.hostApiSpecificStreamInfo = NULL;
         inputParameters.sampleFormat = paFloat32;
         inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputdevice)->defaultLowInputLatency;
 
-        memset(&outputParameters, 0, sizeof(outputParameters));
-        outputParameters.channelCount = 2;
-        outputParameters.device = outputdevice;
-        outputParameters.hostApiSpecificStreamInfo = NULL;
-        outputParameters.sampleFormat = paFloat32;
-        outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputdevice)->defaultLowInputLatency;
-
         err = Pa_OpenStream(
             &stream,
             &inputParameters,
-            &outputParameters,
+            NULL,
             SAMPLE_RATE,
             FRAMES_PER_BUFFER,
             paNoFlag,
             patestCallback,
-            NULL
+            spectroData
         );
         AudioCapture::checkErr(err);
 
@@ -130,6 +153,11 @@ namespace haris {
 
         err = Pa_Terminate();
         AudioCapture::checkErr(err);
+
+        fftw_destroy_plan(spectroData->p);
+        fftw_free(spectroData->in);
+        fftw_free(spectroData->out);
+        free(spectroData);
     }
 }
 
