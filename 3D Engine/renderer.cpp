@@ -7,10 +7,13 @@
 #include <cmath>
 #include <iostream>
 #include <stdint.h>
+#include <iterator>
 
 namespace haris {
 	using std::min;
 	using std::max;
+
+	double* pDepthBuffer = nullptr;
 
 	mat4x4 matProj;
 
@@ -94,7 +97,12 @@ namespace haris {
 			draw3dMesh(m, 0, matView);
 		}
 		
-		//display2DFrequencyBars();	
+		//display2DFrequencyBars();
+		// 
+		//Clear depth buffer
+		for (int i = 0; i < screenHeight * screenWidth; i++) {
+			pDepthBuffer[i] = 0;
+		}
 	}
 
 	void Renderer::display2DFrequencyBars() {
@@ -288,15 +296,15 @@ namespace haris {
 			triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
 			triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
 
-			vec3d normal, line1, line2;
+			vec3d normal, normalisedNormal, line1, line2;
 			line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
 			line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
 			normal = Vector_CrossProduct(line1, line2);
-			normal = Vector_Normalise(normal);
+			normalisedNormal = Vector_Normalise(normal);
 
 			vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
 
-			if(Vector_DotProduct(normal, vCameraRay) < 0.0f)
+			if(Vector_DotProduct(normalisedNormal, vCameraRay) < 0.0f)
 			{
 				triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
 				triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
@@ -325,9 +333,9 @@ namespace haris {
 					triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
 
 					float myScale = 799.0f;
-					triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
-					triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
-					triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
+					triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale; triProjected.p[0].z *= 0.5f * myScale;
+					triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale; triProjected.p[1].z *= 0.5f * myScale;
+					triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale; triProjected.p[2].z *= 0.5f * myScale;
 
 					triProjected.fillColor = tri.fillColor;
 					triProjected.outlineColor = tri.outlineColor;
@@ -338,12 +346,13 @@ namespace haris {
 		}
 
 		// Sort triangles from back to front
-		std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
+		/*std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
 			{
 				float z1 = (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f;
 				float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
 				return z1 > z2;
-			});
+			});*/
+
 		for (auto& triToRaster : vecTrianglesToRaster)
 		{
 			triangle clipped[2];
@@ -379,21 +388,17 @@ namespace haris {
 
 			for (auto& t : listTriangles) {
 
-				if (myMesh.drawShaded) {
-					drawShadedTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y },
-						{ (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
-				}
 				if (myMesh.drawWireframe) {
 					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
 						{ (int)t.p[1].x, (int)t.p[1].y },
 						{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
 				}
 				if (myMesh.drawFilled) {
-					drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y },
-						{ (int)t.p[2].x, (int)t.p[2].y }, t.fillColor);
-				}
-				
+					drawFilledTriangle(t, t.fillColor, myMesh.drawShaded);
+				}	
 			}
+
+			
 		}
 	}
 	
@@ -456,59 +461,117 @@ namespace haris {
 		drawLine(c, a, color);
 	}
 
-	void Renderer::drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color) {
+	void Renderer::drawFilledTriangle(haris::triangle tri, const RGBColor& color, bool isShaded) {
+
 		// Sort the points so that y0 <= y1 <= y2
-		if (b.y < a.y) {
-			std::swap(a, b);
+		if (tri.p[1].y < tri.p[0].y) {
+			std::swap(tri.p[1], tri.p[0]);
 		}
-		if (c.y < a.y) {
-			std::swap(a, c);
+		if (tri.p[2].y < tri.p[0].y) {
+			std::swap(tri.p[0], tri.p[2]);
 		}
-		if (c.y < b.y) {
-			std::swap(c, b);
+		if (tri.p[2].y < tri.p[1].y) {
+			std::swap(tri.p[1], tri.p[2]);
 		}
 
-		std::vector<float> xab = interpolate(a.y, a.x, b.y, b.x);
-		std::vector<float> xbc = interpolate(b.y, b.x, c.y, c.x);
-		std::vector<float> xac = interpolate(a.y, a.x, c.y, c.x);
+		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);
+		std::vector<float> zab = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[1].y, 1/tri.p[1].z);
+		std::vector<float> xbc = interpolate(tri.p[1].y, tri.p[1].x, tri.p[2].y, tri.p[2].x);
+		std::vector<float> zbc = interpolate(tri.p[1].y, 1/tri.p[1].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
+		std::vector<float> zac = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> hab;
+		std::vector<float> hbc;
+		std::vector<float> hac;
 
-		xab.pop_back();
+		int numPixels = xab.size() + xbc.size() - 1;
 		std::vector<float> xabc;
-		xabc.reserve(xab.size() + xbc.size());
-		xabc.insert(xabc.end(), xab.begin(), xab.end());
-		xabc.insert(xabc.end(), xbc.begin(), xbc.end());
+		xabc.reserve(numPixels);
+		std::vector<float> zabc;
+		zabc.reserve(numPixels);
+		std::vector<float> habc;
+		habc.reserve(numPixels);
+
+		if (isShaded) {
+			hab = interpolate(tri.p[0].y, tri.h[0], tri.p[1].y, tri.h[1]);
+			hbc = interpolate(tri.p[1].y, tri.h[1], tri.p[2].y, tri.h[2]);
+			hac = interpolate(tri.p[0].y, tri.h[0], tri.p[2].y, tri.h[2]);
+			hab.pop_back();
+			hab.insert(hab.end(), hbc.begin(), hbc.end());
+			habc = hab;
+		}
+		xab.pop_back();
+		xab.insert(xab.end(), xbc.begin(), xbc.end());
+		xabc = xab;
+
+		zab.pop_back();
+		zab.insert(zab.end(), zbc.begin(), zbc.end());
+		zabc = zab;
 
 		int m = std::floor(xabc.size() / 2);
 
 		std::vector<float> xLeft;
 		std::vector<float> xRight;
+		std::vector<float> zLeft;
+		std::vector<float> zRight;
+		std::vector<float> hLeft;
+		std::vector<float> hRight;
+
 		if (xac.at(m) < xabc.at(m)) {
 			xLeft = xac;
+			zLeft = zac;
+
 			xRight = xabc;
+			zRight = zabc;
+
+			hLeft = hac;
+			hRight = habc;
 		}
 		else {
 			xRight = xac;
-			xLeft = xabc;
-		}
+			zRight = zac;
 
+			xLeft = xabc;
+			zLeft = zabc;
+
+			hRight = hac;
+			hLeft = habc;
+		}
+		std::vector<float> hSegment;
 		BitmapBuffer& buffer = getInstance().buffer;
 
-		for (int y = a.y; y < c.y-1; y++) {
-			for (int x = xLeft.at(y - a.y); x < xRight.at(y - a.y); x++) {
-				//setPixel(x, y, color);
-				//convert u8 colors to one u32
-				uint32_t raw_color = (color.red << 16) | (color.green << 8) | (color.blue << 0);
-				int tempX = buffer.width - x;
-				int tempY = buffer.height - y;
-				if (tempX>0 && tempX<buffer.width && tempY>0 && tempY<buffer.height) {
-					uint32_t* pixel = (uint32_t*)((uint8_t*)buffer.memory + tempX * bytes_per_pixel + tempY * buffer.pitch);
-					*pixel = raw_color;
+		for (int y = (int)tri.p[0].y; y < (int)tri.p[2].y - 1; y++) {
+			int secondY = y - (int)tri.p[0].y;
+
+			int xL = (int)xLeft.at(secondY);
+			int xR = (int)xRight.at(secondY);
+
+			std::vector<float> zSegment = interpolate(xL, zLeft.at(secondY), xR, zRight.at(secondY));
+
+			if (isShaded) { hSegment = interpolate(xL, hLeft.at(secondY), xR, hRight.at(secondY)); }
+			
+			for (int x = xLeft.at(secondY); x < xRight.at(secondY) -1; x++) {
+				
+				float zDepth = zSegment.at(x - xL);
+				if (zDepth > pDepthBuffer[x * screenHeight + y])	//Checking zBuffer
+				{	
+					pDepthBuffer[x * screenHeight + y] = zDepth;
+
+					if (isShaded) {
+						float currentH = hSegment.at(x - xL);
+						RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
+						setPixel(x, y, shadedColor);
+					}
+					else {
+						//RGBColor grey = { 255 * zDepth, 255 * zDepth, 255 * zDepth };
+						setPixel(x, y, color);
+					}	
 				}
 			}
 		}
 	}
 
-	void Renderer::drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0 , float h1, float h2) {
+	/*void Renderer::drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0, float h1, float h2) {
 		// Sort the points so that y0 <= y1 <= y2
 		if (b.y < a.y) {
 			std::swap(a, b);
@@ -589,26 +652,9 @@ namespace haris {
 				}
 			}
 		}
-	}
+	}*/
 
-	std::vector<float> Renderer::interpolate(int i0, float d0, int i1, float d1) {
-		std::vector<float> values;
-		if (i0 == i1) {
-			values.push_back(d0);
-			return values;
-		}
-
-		float a = (d1 - d0) / (static_cast<float>(i1) - static_cast<float>(i0));
-		float d = d0;
-
-		values.reserve(i1 - i0 + 1);	//make room for elements
-
-		for (int i = i0; i <= i1; i++) {
-			values.push_back(d);
-			d += a;
-		}
-		return values;
-	}
+	
 
 	void Renderer::fillRectangle(const Rect& rect, const RGBColor& color) 
 	{
@@ -642,6 +688,12 @@ namespace haris {
 	void Renderer::initVars() {
 		screenHeight = 800;
 		screenWidth = 800;
+
+		pDepthBuffer = new double[screenHeight * screenWidth];
+		for (int i = 0; i < screenHeight * screenWidth; i++) {
+			pDepthBuffer[i] = 0;
+		}
+
 		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
 
 		//Cube
@@ -654,7 +706,7 @@ namespace haris {
 		meshCube.coordinates = { 0, 5, 0, 0 };
 		meshCube.rotation = { 0, 0, 0, 0 };
 		meshCube.drawFilled = true;
-		meshCube.drawShaded = false;
+		meshCube.drawShaded = true;
 		meshCube.drawWireframe = false;
 		myMeshes.push_back(meshCube);
 

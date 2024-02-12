@@ -35,7 +35,7 @@ namespace haris
 
 	struct triangle {
 		vec3d p[3];
-		float h[3] = { 1.0f, 1.0f, 1.0f };
+		float h[3] = { 1.0f, 0.5f, 1.0f };
 		RGBColor fillColor;
 		RGBColor outlineColor;
 	};
@@ -139,7 +139,7 @@ namespace haris
 
 		static void drawTriangle(Point a, Point b, Point c, const RGBColor& color);
 
-		static void drawFilledTriangle(Point a, Point b, Point c, const RGBColor& color);
+		static void drawFilledTriangle(triangle tri, const RGBColor& color, bool isShaded);
 
 		static void drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0 = 0.3f, float h1 = 1.0f, float h2 = 0.5f);
 
@@ -158,7 +158,24 @@ namespace haris
 		static void moveCamera(float deltaTime);
 
 	private:
-		static std::vector<float> interpolate(int i0, float d0, int i1, float d1);
+		static std::vector<float> interpolate(int i0, float d0, int i1, float d1) {
+			if (i0 == i1 || i1 < i0) {
+				return std::vector<float>{d0};
+			}
+
+			float a = (d1 - d0) / (static_cast<float>(i1) - static_cast<float>(i0));
+			float d = d0;
+
+			std::vector<float> values;
+			values.reserve(i1 - i0);
+
+			for (int i = 0; i < i1 - i0; i++) {
+				values.push_back(d);
+				d += a;
+			}
+
+			return values;
+		}
 
 		static void MultiplyMatrixVector(vec3d& i, vec3d& o, mat4x4& m) {
 			o.x = i.x * m.m[0][0] + i.y * m.m[1][0] + i.z * m.m[2][0] + m.m[3][0];
