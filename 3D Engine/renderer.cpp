@@ -13,7 +13,7 @@ namespace haris {
 	using std::min;
 	using std::max;
 
-	double* pDepthBuffer = nullptr;
+	float* pDepthBuffer = nullptr;
 
 	mat4x4 matProj;
 
@@ -21,19 +21,60 @@ namespace haris {
 
 	Camera myCamera;
 
-	float myL, myR;
-	float* freq;
 	float sensitivity = 15.0f;
 
 	int screenWidth, screenHeight;
 
+	bool clippingEnabled = false;
 
-	void Renderer::moveCamera(float deltaTime) {
+	//Create init function
+	Renderer::Renderer() {
+		buffer = {};
+		clearColor = { 255, 255, 255 };
+		screenHeight = 800;
+		screenWidth = 800;
+
+		pDepthBuffer = new float[screenHeight * screenWidth];
+		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
+
+		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
+
+		//Cube
+		mesh meshCube;
+		meshCube.loadFromObjectFile("Cube.txt");
+		if (meshCube.tris.size() == 0) {
+			exit(0);
+		}
+		meshCube.randomizeTriColors();
+		meshCube.coordinates = { 0, 5, 0, 0 };
+		meshCube.rotation = { 0, 0, 0, 0 };
+		meshCube.drawFilled = false;
+		meshCube.drawShaded = false;
+		meshCube.drawWireframe = true;
+		meshCube.linkVolume = true;
+		myMeshes.push_back(meshCube);
+
+		//Ground
+		/*mesh meshFlatGround;
+		meshFlatGround.loadFromObjectFile("FlatGround.txt");
+		if (meshCube.tris.size() == 0) {
+			exit(0);
+		}
+		meshFlatGround.randomizeTriColors();
+		meshFlatGround.scale = { 1, 1, 1, 0 };
+		meshFlatGround.drawFilled = true;
+		meshFlatGround.drawShaded = false;
+		meshFlatGround.drawWireframe = false;
+		myMeshes.push_back(meshFlatGround);*/
+	}
+
+	mat4x4 Renderer::GetCameraViewMatrix(float deltaTime) {
 		float x = 0;
 		float y = 0;
 		float z = 0;
 		float horizontalYaw = 0;
 		float verticalYaw = 0;
+
 		if (haris::Input::isKeyPressed(H_A))
 			x = 1;
 		else if (haris::Input::isKeyPressed(H_D))
@@ -54,30 +95,15 @@ namespace haris {
 		else if (haris::Input::isKeyPressed(H_LEFT))
 			horizontalYaw = -1;
 
-		if (haris::Input::isKeyPressed(H_UP))
+		if (haris::Input::isKeyPressed(H_DOWN))
 			verticalYaw = 1;
-		else if (haris::Input::isKeyPressed(H_DOWN))
+		else if (haris::Input::isKeyPressed(H_UP))
 			verticalYaw = -1;
-
-
-		
-
-		haris::Input::Position mousePosition = haris::Input::getMousePosition();
-		//haris::Input::setMousePosition({ 0, 0 });
-		float lookSpeed = 0.3f;
-		int rotX = (int)(lookSpeed * deltaTime * float(screenWidth / 2 - mousePosition.x));
-		int rotY = (int)(lookSpeed * deltaTime * float(screenHeight / 2 - mousePosition.y));
 
 		vec3d position = { x * myCamera.moveSpeed * deltaTime, y * myCamera.moveSpeed * deltaTime, z * myCamera.moveSpeed * deltaTime };
 		myCamera.vCamera = Vector_Add(myCamera.vCamera, position);
 		myCamera.horizontalYaw += horizontalYaw * myCamera.lookSpeed * deltaTime;
 		myCamera.verticalYaw += verticalYaw * myCamera.lookSpeed * deltaTime;
-	}
-	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freqD) {
-		myL = vol_l;
-		myR = vol_r;
-		freq = freqD;
-		moveCamera(delta);
 
 		vec3d vUp = { 0,1,0 };
 		vec3d vTarget = { 0, 0, 1 };
@@ -90,190 +116,35 @@ namespace haris {
 
 		mat4x4 matCamera = Matrix_PointAt(myCamera.vCamera, vTarget, vUp);
 
-		mat4x4 matView = Matrix_QuickInverse(matCamera);
+		return Matrix_QuickInverse(matCamera);
+	}
 
-		//display3DFrequencyBars(theta);
+	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq) {
+
+		mat4x4 matView = GetCameraViewMatrix(delta);
+
+		float zero = 0;
+		display3DFrequencyBars(theta, vol_l, vol_r, freq, matView);
 		for (auto& m : myMeshes) {
-			draw3dMesh(m, 0, matView);
+			draw3dMesh(m, matView, theta, vol_l, vol_r);
 		}
 		
-		//display2DFrequencyBars();
-		// 
+		//display2DFrequencyBars(freq);
+
 		//Clear depth buffer
-		for (int i = 0; i < screenHeight * screenWidth; i++) {
-			pDepthBuffer[i] = 0;
-		}
-	}
-
-	void Renderer::display2DFrequencyBars() {
-		int numBars = 100;
-		int barWidth = 5;
-		int sens = 10;
-		int startX = 100;
-
-		for (int i = 0; i < numBars; i++) {
-			Rect bar = { startX + (barWidth * i), 300, barWidth, (int)(freq[i] * sens) };
-			Renderer::fillRectangle(bar, {255,0,0});
-		}
-	}
-
-	void Renderer::display3DFrequencyBars(float theta) {
-		int numBars = 100;
-		float barWidth = 0.1f;
-		int sens = 1;
-		int startX = 100;
-
-		mesh grandMesh;
-		grandMesh.loadFromObjectFile("Cube.txt");
-
-		for (int b = 0; b < numBars; b++) {
-			mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
-			mat4x4 matRotX = Matrix_MakeRotationY(theta / 2);
-
-			mat4x4 matTrans = Matrix_MakeTranslation(-20 + ((barWidth*5) * b), 0.0f, 50.0f);
-
-			float volStuff = 1.0f + (myL * sensitivity);
-			mat4x4 matScale = Matrix_MakeScale(barWidth, (freq[b] * sens), barWidth*10);
-			mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
-			matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
-			matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
-
-			vec3d vUp = { 0,1,0 };
-			vec3d vTarget = { 0, 0, 1 };
-
-			mat4x4 matCameraRot = Matrix_MakeRotationY(myCamera.horizontalYaw);
-			myCamera.vLookDir = Matrix_MultiplyVector(matCameraRot, vTarget);
-			vTarget = Vector_Add(myCamera.vCamera, myCamera.vLookDir);
-
-			mat4x4 matCamera = Matrix_PointAt(myCamera.vCamera, vTarget, vUp);
-
-			mat4x4 matView = Matrix_QuickInverse(matCamera);
-
-			std::vector<triangle> vecTrianglesToRaster;
-
-			mesh myMesh = grandMesh;
-
-			//draw triangles
-			for (auto tri : myMesh.tris) {
-				triangle triProjected, triTransformed, triViewed;
-
-				triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
-				triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
-				triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
-
-				vec3d normal, line1, line2;
-				line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
-				line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
-				normal = Vector_CrossProduct(line1, line2);
-				normal = Vector_Normalise(normal);
-
-				vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
-
-				if (Vector_DotProduct(normal, vCameraRay) < 0.0f)
-				{
-					triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
-					triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
-					triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
-
-					int nClippedTriangles = 0;
-					triangle clipped[2];
-					nClippedTriangles = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.1f }, { 0.0f, 0.0f, 1.0f }, triViewed, clipped[0], clipped[1]);
-
-					for (int n = 0; n < nClippedTriangles; n++)
-					{
-						//Apply projection matrix
-						triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
-						triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
-						triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
-
-						//Normalize
-						triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
-						triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
-						triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
-
-						vec3d vOffsetView = { 1,1,0 };
-
-						triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
-						triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
-						triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
-
-						float myScale = 799.0f;
-						triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
-						triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
-						triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
-
-						triProjected.fillColor = tri.fillColor;
-						triProjected.outlineColor = tri.outlineColor;
-
-						vecTrianglesToRaster.push_back(triProjected);
-					}
-				}
-			}
-
-			// Sort triangles from back to front
-			std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
-				{
-					float z1 = (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f;
-					float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
-					return z1 > z2;
-				});
-			for (auto& triToRaster : vecTrianglesToRaster)
-			{
-
-				triangle clipped[2];
-				std::list<triangle> listTriangles;
-
-				// Add initial triangle
-				listTriangles.push_back(triToRaster);
-				int nNewTriangles = 1;
-
-				for (int p = 0; p < 4; p++)
-				{
-					int nTrisToAdd = 0;
-					while (nNewTriangles > 0)
-					{
-						// Take triangle from front of queue
-						triangle test = listTriangles.front();
-						listTriangles.pop_front();
-						nNewTriangles--;
-
-						switch (p)
-						{
-						case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 1:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, (float)800 - 1, 0.0f }, { 0.0f, -1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 2:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						}
-
-						for (int w = 0; w < nTrisToAdd; w++)
-							listTriangles.push_back(clipped[w]);
-					}
-					nNewTriangles = listTriangles.size();
-				}
-
-				for (auto& t : listTriangles) {
-
-					//drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, { 0,255,0 });
-
-					//Wireframe
-					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
-						{ (int)t.p[1].x, (int)t.p[1].y },
-						{ (int)t.p[2].x, (int)t.p[2].y }, {255, 0, 0});
-				}
-			}
-		}
+		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
 	}
 	
-	void Renderer::draw3dMesh(mesh myMesh, float theta, mat4x4 matView) {
+	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r) {
 
 		mat4x4 matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
 		mat4x4 matRotY = Matrix_MakeRotationZ(myMesh.rotation.y);
 		mat4x4 matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
 
-		
 		mat4x4 matScale;
+
 		if (myMesh.linkVolume) {
-			float volStuff = 1.0f + (myL * sensitivity);
+			float volStuff = 1.0f + (vol_l * sensitivity);
 			matScale = Matrix_MakeScale(myMesh.scale.x + volStuff, myMesh.scale.y + volStuff, myMesh.scale.z + volStuff);
 		}
 		else {
@@ -345,14 +216,6 @@ namespace haris {
 			}
 		}
 
-		// Sort triangles from back to front
-		/*std::sort(vecTrianglesToRaster.begin(), vecTrianglesToRaster.end(), [](triangle& t1, triangle& t2)
-			{
-				float z1 = (t1.p[0].z + t1.p[1].z + t1.p[2].z) / 3.0f;
-				float z2 = (t2.p[0].z + t2.p[1].z + t2.p[2].z) / 3.0f;
-				return z1 > z2;
-			});*/
-
 		for (auto& triToRaster : vecTrianglesToRaster)
 		{
 			triangle clipped[2];
@@ -394,11 +257,156 @@ namespace haris {
 						{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
 				}
 				if (myMesh.drawFilled) {
-					drawFilledTriangle(t, t.fillColor, myMesh.drawShaded);
-				}	
+					drawFilledTriangle(t, t.fillColor);
+				}
+				else if (myMesh.drawShaded) {
+					drawShadedTriangle(t, t.fillColor);
+				}
+			}
+		}
+	}
+
+	void Renderer::display2DFrequencyBars(float* freq) {
+		int numBars = 100;
+		int barWidth = 5;
+		int sens = 10;
+		int startX = 100;
+
+		for (int i = 0; i < numBars; i++) {
+			Rect bar = { startX + (barWidth * i), 300, barWidth, (int)(freq[i] * sens) };
+			Renderer::fillRectangle(bar, { 255,0,0 });
+		}
+	}
+
+	void Renderer::display3DFrequencyBars(float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView) {
+		int numBars = 100;
+		float barWidth = 0.5f;
+		float barGap = 2;
+		int sens = 1;
+		int startX = 100;
+
+		mesh grandMesh;
+		grandMesh.loadFromObjectFile("Cube.txt");
+		grandMesh.coordinates = { 0, 0, 20 };
+
+		mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
+		mat4x4 matRotX = Matrix_MakeRotationY(theta / 2);
+
+		for (int b = 0; b < numBars; b++) {
+			
+			mat4x4 matTrans = Matrix_MakeTranslation(grandMesh.coordinates.x + (barWidth * b) + barGap - (numBars/2 * barWidth), grandMesh.coordinates.y, grandMesh.coordinates.z);
+
+			mat4x4 matScale = Matrix_MakeScale(barWidth, (freq[b] * sens), barWidth * 10);
+
+			mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+			matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
+			matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
+
+			std::vector<triangle> vecTrianglesToRaster;
+
+			mesh myMesh = grandMesh;
+
+			//draw triangles
+			for (auto tri : myMesh.tris) {
+				triangle triProjected, triTransformed, triViewed;
+
+				triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
+				triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
+				triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
+
+				vec3d normal, line1, line2;
+				line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
+				line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
+				normal = Vector_CrossProduct(line1, line2);
+				normal = Vector_Normalise(normal);
+
+				vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
+
+				if (Vector_DotProduct(normal, vCameraRay) < 0.0f)
+				{
+					triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
+					triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
+					triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
+
+					int nClippedTriangles = 0;
+					triangle clipped[2];
+					nClippedTriangles = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.1f }, { 0.0f, 0.0f, 1.0f }, triViewed, clipped[0], clipped[1]);
+
+					for (int n = 0; n < nClippedTriangles; n++)
+					{
+						//Apply projection matrix
+						triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
+						triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
+						triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
+
+						//Normalize
+						triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
+						triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
+						triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
+
+						vec3d vOffsetView = { 1,1,0 };
+
+						triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
+						triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
+						triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
+
+						float myScale = 799.0f;
+						triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
+						triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
+						triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
+
+						triProjected.fillColor = tri.fillColor;
+						triProjected.outlineColor = tri.outlineColor;
+
+						vecTrianglesToRaster.push_back(triProjected);
+					}
+				}
 			}
 
-			
+			for (auto& triToRaster : vecTrianglesToRaster)
+			{
+
+				triangle clipped[2];
+				std::list<triangle> listTriangles;
+
+				// Add initial triangle
+				listTriangles.push_back(triToRaster);
+				int nNewTriangles = 1;
+
+				for (int p = 0; p < 4; p++)
+				{
+					int nTrisToAdd = 0;
+					while (nNewTriangles > 0)
+					{
+						// Take triangle from front of queue
+						triangle test = listTriangles.front();
+						listTriangles.pop_front();
+						nNewTriangles--;
+
+						switch (p)
+						{
+						case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 1:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, (float)800 - 1, 0.0f }, { 0.0f, -1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 2:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
+						}
+
+						for (int w = 0; w < nTrisToAdd; w++)
+							listTriangles.push_back(clipped[w]);
+					}
+					nNewTriangles = listTriangles.size();
+				}
+
+				for (auto& t : listTriangles) {
+
+					//drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, { 0,255,0 });
+
+					//Wireframe
+					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
+						{ (int)t.p[1].x, (int)t.p[1].y },
+						{ (int)t.p[2].x, (int)t.p[2].y }, { 255, 0, 0 });
+				}
+			}
 		}
 	}
 	
@@ -461,7 +469,7 @@ namespace haris {
 		drawLine(c, a, color);
 	}
 
-	void Renderer::drawFilledTriangle(haris::triangle tri, const RGBColor& color, bool isShaded) {
+	void Renderer::drawFilledTriangle(haris::triangle tri, const RGBColor& color) {
 
 		// Sort the points so that y0 <= y1 <= y2
 		if (tri.p[1].y < tri.p[0].y) {
@@ -480,9 +488,6 @@ namespace haris {
 		std::vector<float> zbc = interpolate(tri.p[1].y, 1/tri.p[1].z, tri.p[2].y, 1/tri.p[2].z);
 		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
 		std::vector<float> zac = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[2].y, 1/tri.p[2].z);
-		std::vector<float> hab;
-		std::vector<float> hbc;
-		std::vector<float> hac;
 
 		int numPixels = xab.size() + xbc.size() - 1;
 		std::vector<float> xabc;
@@ -492,14 +497,90 @@ namespace haris {
 		std::vector<float> habc;
 		habc.reserve(numPixels);
 
-		if (isShaded) {
-			hab = interpolate(tri.p[0].y, tri.h[0], tri.p[1].y, tri.h[1]);
-			hbc = interpolate(tri.p[1].y, tri.h[1], tri.p[2].y, tri.h[2]);
-			hac = interpolate(tri.p[0].y, tri.h[0], tri.p[2].y, tri.h[2]);
-			hab.pop_back();
-			hab.insert(hab.end(), hbc.begin(), hbc.end());
-			habc = hab;
+		xab.pop_back();
+		xab.insert(xab.end(), xbc.begin(), xbc.end());
+		xabc = xab;
+
+		zab.pop_back();
+		zab.insert(zab.end(), zbc.begin(), zbc.end());
+		zabc = zab;
+
+		int m = std::floor(xabc.size() / 2);
+
+		std::vector<float> xLeft;
+		std::vector<float> xRight;
+		std::vector<float> zLeft;
+		std::vector<float> zRight;
+
+		if (xac.at(m) < xabc.at(m)) {
+			xLeft = xac;
+			zLeft = zac;
+
+			xRight = xabc;
+			zRight = zabc;
 		}
+		else {
+			xRight = xac;
+			zRight = zac;
+
+			xLeft = xabc;
+			zLeft = zabc;
+		}
+		std::vector<float> hSegment;
+		BitmapBuffer& buffer = getInstance().buffer;
+
+		for (int y = (int)tri.p[0].y; y < (int)tri.p[2].y - 1; y++) {
+			int secondY = y - (int)tri.p[0].y;
+
+			int xL = (int)xLeft.at(secondY);
+			int xR = (int)xRight.at(secondY);
+
+			std::vector<float> zSegment = interpolate(xL, zLeft.at(secondY), xR, zRight.at(secondY));
+			
+			for (int x = xLeft.at(secondY); x < xRight.at(secondY) -1; x++) {
+				float zDepth = zSegment.at(x - xL);
+				if (zDepth > pDepthBuffer[x * screenHeight + y])	//Checking zBuffer
+				{
+					pDepthBuffer[x * screenHeight + y] = zDepth;
+					setPixel(x, y, color);
+				}
+			}
+		}
+	}
+
+	void Renderer::drawShadedTriangle(haris::triangle tri, const RGBColor& color) {
+		// Sort the points so that y0 <= y1 <= y2
+		if (tri.p[1].y < tri.p[0].y) {
+			std::swap(tri.p[1], tri.p[0]);
+		}
+		if (tri.p[2].y < tri.p[0].y) {
+			std::swap(tri.p[0], tri.p[2]);
+		}
+		if (tri.p[2].y < tri.p[1].y) {
+			std::swap(tri.p[1], tri.p[2]);
+		}
+
+		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);
+		std::vector<float> zab = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[1].y, 1/tri.p[1].z);
+		std::vector<float> xbc = interpolate(tri.p[1].y, tri.p[1].x, tri.p[2].y, tri.p[2].x);
+		std::vector<float> zbc = interpolate(tri.p[1].y, 1/tri.p[1].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
+		std::vector<float> zac = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> hab = interpolate(tri.p[0].y, tri.h[0], tri.p[1].y, tri.h[1]);
+		std::vector<float> hbc = interpolate(tri.p[1].y, tri.h[1], tri.p[2].y, tri.h[2]);
+		std::vector<float> hac = interpolate(tri.p[0].y, tri.h[0], tri.p[2].y, tri.h[2]);
+
+		int numPixels = xab.size() + xbc.size() - 1;
+		std::vector<float> xabc;
+		xabc.reserve(numPixels);
+		std::vector<float> zabc;
+		zabc.reserve(numPixels);
+		std::vector<float> habc;
+		habc.reserve(numPixels);
+
+		hab.pop_back();
+		hab.insert(hab.end(), hbc.begin(), hbc.end());
+		habc = hab;
 		xab.pop_back();
 		xab.insert(xab.end(), xbc.begin(), xbc.end());
 		xabc = xab;
@@ -537,7 +618,7 @@ namespace haris {
 			hRight = hac;
 			hLeft = habc;
 		}
-		std::vector<float> hSegment;
+		
 		BitmapBuffer& buffer = getInstance().buffer;
 
 		for (int y = (int)tri.p[0].y; y < (int)tri.p[2].y - 1; y++) {
@@ -548,113 +629,22 @@ namespace haris {
 
 			std::vector<float> zSegment = interpolate(xL, zLeft.at(secondY), xR, zRight.at(secondY));
 
-			if (isShaded) { hSegment = interpolate(xL, hLeft.at(secondY), xR, hRight.at(secondY)); }
+			std::vector<float> hSegment = interpolate(xL, hLeft.at(secondY), xR, hRight.at(secondY));
 			
 			for (int x = xLeft.at(secondY); x < xRight.at(secondY) -1; x++) {
 				
 				float zDepth = zSegment.at(x - xL);
 				if (zDepth > pDepthBuffer[x * screenHeight + y])	//Checking zBuffer
-				{	
+				{
 					pDepthBuffer[x * screenHeight + y] = zDepth;
+					float currentH = hSegment.at(x - xL);
 
-					if (isShaded) {
-						float currentH = hSegment.at(x - xL);
-						RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
-						setPixel(x, y, shadedColor);
-					}
-					else {
-						//RGBColor grey = { 255 * zDepth, 255 * zDepth, 255 * zDepth };
-						setPixel(x, y, color);
-					}	
-				}
+					RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
+					setPixel(x, y, shadedColor);
+				}				
 			}
 		}
 	}
-
-	/*void Renderer::drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0, float h1, float h2) {
-		// Sort the points so that y0 <= y1 <= y2
-		if (b.y < a.y) {
-			std::swap(a, b);
-			std::swap(h0, h1);
-		}
-		if (c.y < a.y) {
-			std::swap(a, c);
-			std::swap(h0, h2);
-		}
-		if (c.y < b.y) {
-			std::swap(c, b);
-			std::swap(h2, h1);
-		}
-
-		std::vector<float> xab = interpolate(a.y, a.x, b.y, b.x);
-		std::vector<float> hab = interpolate(a.y, h0, b.y, h1);
-
-		std::vector<float> xbc = interpolate(b.y, b.x, c.y, c.x);
-		std::vector<float> hbc = interpolate(b.y, h1, c.y, h2);
-
-		std::vector<float> xac = interpolate(a.y, a.x, c.y, c.x);
-		std::vector<float> hac = interpolate(a.y, h0, c.y, h2);
-
-		xab.pop_back();
-		std::vector<float> xabc;
-		xabc.reserve(xab.size() + xbc.size());
-		xabc.insert(xabc.end(), xab.begin(), xab.end());
-		xabc.insert(xabc.end(), xbc.begin(), xbc.end());
-
-		hab.pop_back();
-		std::vector<float> habc;
-		habc.reserve(hab.size() + hbc.size());
-		habc.insert(habc.end(), hab.begin(), hab.end());
-		habc.insert(habc.end(), hbc.begin(), hbc.end());
-
-		int m = std::floor(xabc.size() / 2);
-
-		std::vector<float> xLeft;
-		std::vector<float> xRight;
-
-		std::vector<float> hLeft;
-		std::vector<float> hRight;
-
-		if (xac.at(m) < xabc.at(m)) {
-			xLeft = xac;
-			xRight = xabc;
-
-			hLeft = hac;
-			hRight = habc;
-		}
-		else {
-			xRight = xac;
-			xLeft = xabc;
-
-			hRight = hac;
-			hLeft = habc;
-		}
-
-		float xL;
-		float xR;
-
-		BitmapBuffer& buffer = getInstance().buffer;
-
-		for (int y = a.y; y < c.y - 1; y++) {
-			xL = xLeft.at(y - a.y);
-			xR = xRight.at(y - a.y);
-
-			std::vector<float> hSegment = interpolate(xL, hLeft.at(y - a.y), xR, hRight.at(y - a.y));
-			for (int x = xL; x <= xR; x++) {
-				float currentH = hSegment.at(x - xL);
-				RGBColor shadedColor = { (uint8_t)(color.red * currentH), (uint8_t)(color.green * currentH), (uint8_t)(color.blue * currentH) };
-				uint32_t raw_color = (shadedColor.red << 16) | (shadedColor.green << 8) | (shadedColor.blue << 0);
-				int tempX = buffer.width - x;
-				int tempY = buffer.height - y;
-				if (tempX > 0 && tempX < buffer.width && tempY>0 && tempY < buffer.height) {
-					uint32_t* pixel = (uint32_t*)((uint8_t*)buffer.memory + tempX * bytes_per_pixel + tempY * buffer.pitch);
-					*pixel = raw_color;
-				}
-			}
-		}
-	}*/
-
-	
 
 	void Renderer::fillRectangle(const Rect& rect, const RGBColor& color) 
 	{
@@ -682,46 +672,6 @@ namespace haris {
 			}
 			row += buffer.pitch;
 		}
-	}
-
-	//Create init function
-	void Renderer::initVars() {
-		screenHeight = 800;
-		screenWidth = 800;
-
-		pDepthBuffer = new double[screenHeight * screenWidth];
-		for (int i = 0; i < screenHeight * screenWidth; i++) {
-			pDepthBuffer[i] = 0;
-		}
-
-		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
-
-		//Cube
-		mesh meshCube;
-		meshCube.loadFromObjectFile("Cube.txt");
-		if (meshCube.tris.size() == 0) {
-			exit(0);
-		}
-		meshCube.randomizeTriColors();
-		meshCube.coordinates = { 0, 5, 0, 0 };
-		meshCube.rotation = { 0, 0, 0, 0 };
-		meshCube.drawFilled = true;
-		meshCube.drawShaded = true;
-		meshCube.drawWireframe = false;
-		myMeshes.push_back(meshCube);
-
-		//Ground
-		mesh meshFlatGround;
-		meshFlatGround.loadFromObjectFile("FlatGround.txt");
-		if (meshCube.tris.size() == 0) {
-			exit(0);
-		}
-		meshFlatGround.randomizeTriColors();
-		meshFlatGround.scale = { 1, 1, 1, 0 };
-		meshFlatGround.drawFilled = true;
-		meshFlatGround.drawShaded = false;
-		meshFlatGround.drawWireframe = false;
-		myMeshes.push_back(meshFlatGround);
 	}
 
 	void Renderer::getWindowDimensions(int* outWidth, int* outHeight) {

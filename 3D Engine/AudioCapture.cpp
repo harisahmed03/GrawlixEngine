@@ -59,6 +59,7 @@ namespace haris {
             double frequency = callbackData->out[(int)(callbackData->startIndex + proportion * callbackData->spectroSize)];
             freqDisplay[i] = frequency;
         }
+        //operate on the fourier transform
 
         float temp_vol_l = 0;
         float temp_vol_r = 0;

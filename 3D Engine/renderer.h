@@ -49,6 +49,7 @@ namespace haris
 		bool linkVolume = false;
 		bool linkFrequency = false;
 		bool linkPitch = false;
+
 		bool drawWireframe = false;
 		bool drawFilled = true;
 		bool drawShaded = false;
@@ -139,25 +140,32 @@ namespace haris
 
 		static void drawTriangle(Point a, Point b, Point c, const RGBColor& color);
 
-		static void drawFilledTriangle(triangle tri, const RGBColor& color, bool isShaded);
+		static void drawFilledTriangle(triangle tri, const RGBColor& color);
 
-		static void drawShadedTriangle(Point a, Point b, Point c, RGBColor& color, float h0 = 0.3f, float h1 = 1.0f, float h2 = 0.5f);
+		static void drawShadedTriangle(triangle tri, const RGBColor& color);
 
 		static void fillRectangle(const Rect& rect, const RGBColor& color);
 
 		static void initVars();
 
-		static void display2DFrequencyBars();
+		static void display2DFrequencyBars(float* freq);
 
-		static void display3DFrequencyBars(float theta);
+		static void display3DFrequencyBars(float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matview);
 
-		static void draw3dMesh(mesh myMesh, float fElapsedTime, mat4x4 matView);
+		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r);
 
 		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freqD);
 
-		static void moveCamera(float deltaTime);
+		static mat4x4 GetCameraViewMatrix(float deltaTime);
+
+		
 
 	private:
+		static void clearDepthBuffer(float* pDepthBuffer, int screenWidth, int screenHeight) {
+			for (int i = 0; i < screenHeight * screenWidth; i++) {
+				pDepthBuffer[i] = 0;
+			}
+		}
 		static std::vector<float> interpolate(int i0, float d0, int i1, float d1) {
 			if (i0 == i1 || i1 < i0) {
 				return std::vector<float>{d0};
@@ -174,6 +182,38 @@ namespace haris
 				d += a;
 			}
 
+			return values;
+		}
+
+		static std::vector<float> Bresenham(int ya, int xa, int yb, int xb)
+		{
+			std::vector<float> values;
+			
+			int dx = abs(xa - xb), dy = abs(ya - yb);
+			int p = 2 * dy - dx;
+			int twoDy = 2 * dy, twoDyDx = 2 * (dy - dx);
+			int x, y, xEnd;
+			/*Determine which points to start and End */
+			if (xa > xb) {
+				x = xb;
+				y = yb;
+				xEnd = xa;
+			}
+			else {
+				x = xa; y = ya; xEnd = xb;
+			}
+			values.push_back(x);
+			while (x < xEnd) {
+				x++;
+				if (p < 0) {
+					p = p + twoDy;
+				}
+				else {
+					y++;
+					p = p + twoDyDx;
+				}
+				values.push_back(x);
+			}
 			return values;
 		}
 
@@ -455,7 +495,7 @@ namespace haris
 		}
 
 	private:
-		Renderer() { buffer = {}; clearColor = { 255, 255, 255 }; initVars(); };
+		Renderer();
 
 		Renderer(const Renderer&) = delete;
 		Renderer& operator = (const Renderer&) = delete;
