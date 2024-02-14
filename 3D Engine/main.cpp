@@ -1,16 +1,15 @@
 #include <iostream>
+#include <memory>
 #include "framework.h"
 
 framework_app_entry_point
 {
 	//game init code
-	
-	float speed = 100;
-
 	float vol_l, vol_r;
-	float* freqDisplay = (float*)malloc(sizeof(float) * 100);	//change to num bars
+	int numBars = 10;
+	float* freqDisplay = (float*)malloc(sizeof(float) * numBars);	//change to num bars
 
-	haris::AudioCapture audioCapture = haris::AudioCapture(&vol_l, &vol_r, freqDisplay);
+	haris::AudioCapture audioCapture = haris::AudioCapture(vol_l, vol_r, *freqDisplay, numBars);
 
 	haris::Game::setGameUpdate([&](float delta) {
 		wchar_t charBuffer[256];
@@ -31,11 +30,19 @@ framework_app_entry_point
 			frames = 0;
 		}
 
-		haris::Renderer::RenderScene(theta, delta, vol_l, vol_r, freqDisplay);
+		haris::Renderer::RenderScene(theta, delta, vol_l, vol_r, freqDisplay, numBars);
 
 
 		if (haris::Input::isKeyPressed(H_P))
 			audioCapture.terminate();
+		if (haris::Input::isKeyPressed(H_K)) {
+			numBars = numBars - 1;
+			audioCapture.changeNumBars(numBars);
+		}	
+		else if (haris::Input::isKeyPressed(H_L)) {
+			numBars = numBars + 1;
+			audioCapture.changeNumBars(numBars);
+		}
 	}
 	);
 

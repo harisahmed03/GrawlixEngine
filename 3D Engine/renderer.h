@@ -150,17 +150,23 @@ namespace haris
 
 		static void display2DFrequencyBars(float* freq);
 
-		static void display3DFrequencyBars(float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matview);
+		static void display3DFrequencyBars(mesh& barMesh, float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView, int& numBars);
 
 		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r);
 
-		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freqD);
+		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars);
 
 		static mat4x4 GetCameraViewMatrix(float deltaTime);
 
 		
 
 	private:
+		static void myPrint(std::string message) {
+			wchar_t charBuffer[256];
+			swprintf(charBuffer, 256, L"%s\n", message);
+			OutputDebugString(charBuffer);
+		}
+
 		static void clearDepthBuffer(float* pDepthBuffer, int screenWidth, int screenHeight) {
 			for (int i = 0; i < screenHeight * screenWidth; i++) {
 				pDepthBuffer[i] = 0;

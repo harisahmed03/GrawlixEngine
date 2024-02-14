@@ -18,6 +18,7 @@ namespace haris {
 	mat4x4 matProj;
 
 	std::list<mesh> myMeshes;
+	std::list<mesh> frequencyMeshes;
 
 	Camera myCamera;
 
@@ -43,16 +44,18 @@ namespace haris {
 		mesh meshCube;
 		meshCube.loadFromObjectFile("Cube.txt");
 		if (meshCube.tris.size() == 0) {
-			exit(0);
+			myPrint("Could not load an object");
 		}
-		meshCube.randomizeTriColors();
-		meshCube.coordinates = { 0, 5, 0, 0 };
-		meshCube.rotation = { 0, 0, 0, 0 };
-		meshCube.drawFilled = false;
-		meshCube.drawShaded = false;
-		meshCube.drawWireframe = true;
-		meshCube.linkVolume = true;
-		myMeshes.push_back(meshCube);
+		else {
+			meshCube.randomizeTriColors();
+			meshCube.coordinates = { 0, 5, 0, 0 };
+			meshCube.rotation = { 0, 0, 0, 0 };
+			meshCube.drawFilled = false;
+			meshCube.drawShaded = false;
+			meshCube.drawWireframe = true;
+			meshCube.linkVolume = true;
+			myMeshes.push_back(meshCube);
+		}	
 
 		//Ground
 		/*mesh meshFlatGround;
@@ -66,6 +69,42 @@ namespace haris {
 		meshFlatGround.drawShaded = false;
 		meshFlatGround.drawWireframe = false;
 		myMeshes.push_back(meshFlatGround);*/
+
+		//Bar used for frequency display
+		mesh meshBar;
+		meshBar.loadFromObjectFile("Cube.txt");
+		if (meshCube.tris.size() == 0) {
+			myPrint("Could not load an object");
+		}
+		else {
+			meshBar.randomizeTriColors();
+			meshBar.coordinates = { 0, 0, 10, 0 };
+			meshBar.scale = { 2, 1, 2, 0 };
+			meshBar.drawFilled = false;
+			meshBar.drawShaded = false;
+			meshBar.drawWireframe = true;
+			frequencyMeshes.push_back(meshBar);
+		}
+	}
+
+
+	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars) {
+
+		mat4x4 matView = GetCameraViewMatrix(delta);
+
+		float zero = 0;
+		for (auto& m : frequencyMeshes) {
+			display3DFrequencyBars(m, theta, vol_l, vol_r, freq, matView, numBars);
+		}
+		
+		for (auto& m : myMeshes) {
+			draw3dMesh(m, matView, theta, vol_l, vol_r);
+		}
+		
+		//display2DFrequencyBars(freq);
+
+		//Clear depth buffer
+		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
 	}
 
 	mat4x4 Renderer::GetCameraViewMatrix(float deltaTime) {
@@ -118,27 +157,11 @@ namespace haris {
 
 		return Matrix_QuickInverse(matCamera);
 	}
-
-	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq) {
-
-		mat4x4 matView = GetCameraViewMatrix(delta);
-
-		float zero = 0;
-		display3DFrequencyBars(theta, vol_l, vol_r, freq, matView);
-		for (auto& m : myMeshes) {
-			draw3dMesh(m, matView, theta, vol_l, vol_r);
-		}
-		
-		//display2DFrequencyBars(freq);
-
-		//Clear depth buffer
-		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
-	}
 	
 	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r) {
 
 		mat4x4 matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
-		mat4x4 matRotY = Matrix_MakeRotationZ(myMesh.rotation.y);
+		mat4x4 matRotY = Matrix_MakeRotationY(myMesh.rotation.y);
 		mat4x4 matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
 
 		mat4x4 matScale;
@@ -151,10 +174,10 @@ namespace haris {
 			matScale = Matrix_MakeScale(myMesh.scale.x, myMesh.scale.y, myMesh.scale.z);
 		}
 		
-		mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
+		mat4x4 matWorld = Matrix_MultiplyMatrix(matScale, matRotX);
 		mat4x4 matTrans = Matrix_MakeTranslation(myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z);
 
-		matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
+		matWorld = Matrix_MultiplyMatrix(matWorld, matRotY);
 		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
 
 		std::vector<triangle> vecTrianglesToRaster;
@@ -203,10 +226,10 @@ namespace haris {
 					triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
 					triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
 
-					float myScale = 799.0f;
-					triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale; triProjected.p[0].z *= 0.5f * myScale;
-					triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale; triProjected.p[1].z *= 0.5f * myScale;
-					triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale; triProjected.p[2].z *= 0.5f * myScale;
+					float myScale = 0.5 * (screenWidth - 1);
+					triProjected.p[0].x *= myScale; triProjected.p[0].y *= myScale; triProjected.p[0].z *=  myScale;
+					triProjected.p[1].x *= myScale; triProjected.p[1].y *= myScale; triProjected.p[1].z *= myScale;
+					triProjected.p[2].x *= myScale; triProjected.p[2].y *= myScale; triProjected.p[2].z *= myScale;
 
 					triProjected.fillColor = tri.fillColor;
 					triProjected.outlineColor = tri.outlineColor;
@@ -266,6 +289,21 @@ namespace haris {
 		}
 	}
 
+	void Renderer::display3DFrequencyBars(mesh& barMesh, float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView, int& numBars) {
+
+		mat4x4 matRotZ = Matrix_MakeRotationZ( barMesh.rotation.z);
+		mat4x4 matRotX = Matrix_MakeRotationX( theta + barMesh.rotation.x);
+
+		for (int b = 0; b < numBars; b++) {
+			mesh myMesh = barMesh;
+
+			myMesh.scale = { myMesh.scale.x, myMesh.scale.y + freq[b], myMesh.scale.z };	//spreads bars across X axis
+			myMesh.coordinates = { (numBars / 2 - b) * (myMesh.scale.x * 2) + myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z };
+
+			draw3dMesh(myMesh, matView, theta, vol_l, vol_r);
+		}
+	}
+	
 	void Renderer::display2DFrequencyBars(float* freq) {
 		int numBars = 100;
 		int barWidth = 5;
@@ -275,138 +313,6 @@ namespace haris {
 		for (int i = 0; i < numBars; i++) {
 			Rect bar = { startX + (barWidth * i), 300, barWidth, (int)(freq[i] * sens) };
 			Renderer::fillRectangle(bar, { 255,0,0 });
-		}
-	}
-
-	void Renderer::display3DFrequencyBars(float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView) {
-		int numBars = 100;
-		float barWidth = 0.5f;
-		float barGap = 2;
-		int sens = 1;
-		int startX = 100;
-
-		mesh grandMesh;
-		grandMesh.loadFromObjectFile("Cube.txt");
-		grandMesh.coordinates = { 0, 0, 20 };
-
-		mat4x4 matRotZ = Matrix_MakeRotationZ(theta);
-		mat4x4 matRotX = Matrix_MakeRotationY(theta / 2);
-
-		for (int b = 0; b < numBars; b++) {
-			
-			mat4x4 matTrans = Matrix_MakeTranslation(grandMesh.coordinates.x + (barWidth * b) + barGap - (numBars/2 * barWidth), grandMesh.coordinates.y, grandMesh.coordinates.z);
-
-			mat4x4 matScale = Matrix_MakeScale(barWidth, (freq[b] * sens), barWidth * 10);
-
-			mat4x4 matWorld = Matrix_MultiplyMatrix(matRotZ, matRotX);
-			matWorld = Matrix_MultiplyMatrix(matWorld, matScale);
-			matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
-
-			std::vector<triangle> vecTrianglesToRaster;
-
-			mesh myMesh = grandMesh;
-
-			//draw triangles
-			for (auto tri : myMesh.tris) {
-				triangle triProjected, triTransformed, triViewed;
-
-				triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
-				triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
-				triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
-
-				vec3d normal, line1, line2;
-				line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
-				line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
-				normal = Vector_CrossProduct(line1, line2);
-				normal = Vector_Normalise(normal);
-
-				vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
-
-				if (Vector_DotProduct(normal, vCameraRay) < 0.0f)
-				{
-					triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
-					triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
-					triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
-
-					int nClippedTriangles = 0;
-					triangle clipped[2];
-					nClippedTriangles = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.1f }, { 0.0f, 0.0f, 1.0f }, triViewed, clipped[0], clipped[1]);
-
-					for (int n = 0; n < nClippedTriangles; n++)
-					{
-						//Apply projection matrix
-						triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
-						triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
-						triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
-
-						//Normalize
-						triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
-						triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
-						triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
-
-						vec3d vOffsetView = { 1,1,0 };
-
-						triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
-						triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
-						triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
-
-						float myScale = 799.0f;
-						triProjected.p[0].x *= 0.5f * myScale; triProjected.p[0].y *= 0.5f * myScale;
-						triProjected.p[1].x *= 0.5f * myScale; triProjected.p[1].y *= 0.5f * myScale;
-						triProjected.p[2].x *= 0.5f * myScale; triProjected.p[2].y *= 0.5f * myScale;
-
-						triProjected.fillColor = tri.fillColor;
-						triProjected.outlineColor = tri.outlineColor;
-
-						vecTrianglesToRaster.push_back(triProjected);
-					}
-				}
-			}
-
-			for (auto& triToRaster : vecTrianglesToRaster)
-			{
-
-				triangle clipped[2];
-				std::list<triangle> listTriangles;
-
-				// Add initial triangle
-				listTriangles.push_back(triToRaster);
-				int nNewTriangles = 1;
-
-				for (int p = 0; p < 4; p++)
-				{
-					int nTrisToAdd = 0;
-					while (nNewTriangles > 0)
-					{
-						// Take triangle from front of queue
-						triangle test = listTriangles.front();
-						listTriangles.pop_front();
-						nNewTriangles--;
-
-						switch (p)
-						{
-						case 0:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 1:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, (float)800 - 1, 0.0f }, { 0.0f, -1.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 2:	nTrisToAdd = Triangle_ClipAgainstPlane({ 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						case 3:	nTrisToAdd = Triangle_ClipAgainstPlane({ (float)800 - 1, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f }, test, clipped[0], clipped[1]); break;
-						}
-
-						for (int w = 0; w < nTrisToAdd; w++)
-							listTriangles.push_back(clipped[w]);
-					}
-					nNewTriangles = listTriangles.size();
-				}
-
-				for (auto& t : listTriangles) {
-
-					//drawFilledTriangle({ (int)t.p[0].x, (int)t.p[0].y }, { (int)t.p[1].x, (int)t.p[1].y }, { (int)t.p[2].x, (int)t.p[2].y }, { 0,255,0 });
-
-					//Wireframe
-					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
-						{ (int)t.p[1].x, (int)t.p[1].y },
-						{ (int)t.p[2].x, (int)t.p[2].y }, { 255, 0, 0 });
-				}
-			}
 		}
 	}
 	

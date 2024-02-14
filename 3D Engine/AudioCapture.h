@@ -8,7 +8,7 @@
 namespace haris {
 	class AudioCapture {
 	public:
-		AudioCapture(float* voll, float* volr, float* freqD);
+		AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars);
 		PaError err;
 
 		static void checkErr(PaError err) {
@@ -17,11 +17,15 @@ namespace haris {
 				exit(EXIT_FAILURE);
 			}
 		}
-
-		void init();
+		static int patestCallback(
+			const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
+			const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
+			void* userData
+		);
 
 		void terminate();
 
+		static void changeNumBars(int& numBars);
 
 		static void print(std::string message) {
 			wchar_t charBuffer[2000];

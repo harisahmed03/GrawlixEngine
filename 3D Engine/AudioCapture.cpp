@@ -10,6 +10,8 @@
 #define SPECTRO_FREQ_START 20
 #define SPECTRO_FREQ_END 1000
 
+#define WINDOWS_DEFAULT_AUDIO_DEVICE 0
+
 namespace haris {
 
     typedef struct {
@@ -18,64 +20,18 @@ namespace haris {
         fftw_plan p;
         int startIndex;
         int spectroSize;
+
+        float* vol_l;
+        float* vol_r;
+        float* freqDisplay;
+        int* numBars;
+
     } streamCallbackData;
 
     static streamCallbackData* spectroData;
-
-    float* vol_l;
-    float* vol_r;
-
-    float* freqDisplay;
-
     PaStream* stream;
-	AudioCapture::AudioCapture(float* voll, float* volr, float* freqD) {
-        vol_l = voll;
-        vol_r = volr;
-        freqDisplay = freqD;
-        freqDisplay = freqD;
-		init();
-	}
 
-    static int patestCallback(
-        const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
-        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
-        void* userData
-    ) {
-        float* in = (float*)inputBuffer;
-        (void)outputBuffer;
-        streamCallbackData* callbackData = (streamCallbackData*)userData;
-
-        int dispSize = 100;
-
-        for (unsigned long i = 0; i < framesPerBuffer; i++) {
-            callbackData->in[i] = (in[i * NUM_CHANNELS]);
-        }
-
-        fftw_execute(callbackData->p);
-
-        for (int i = 0; i < dispSize; i++) {
-            //double proportion = std::pow(i / (double)dispSize, 3);
-            double proportion = i / (double)dispSize;
-            double frequency = callbackData->out[(int)(callbackData->startIndex + proportion * callbackData->spectroSize)];
-            freqDisplay[i] = frequency;
-        }
-        //operate on the fourier transform
-
-        float temp_vol_l = 0;
-        float temp_vol_r = 0;
-
-        for (unsigned long i = 0; i < framesPerBuffer * 2; i += 2) {
-            temp_vol_l = AudioCapture::mymax(temp_vol_l, std::abs(in[i]));
-            temp_vol_r = AudioCapture::mymax(temp_vol_r, std::abs(in[i + 1]));
-        }
-
-        *vol_l = temp_vol_l;
-        *vol_r = temp_vol_r;
-
-        return 0;
-    }
-
-    void AudioCapture::init() {
+	AudioCapture::AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars) {
         PaError err;
         err = Pa_Initialize();
         AudioCapture::checkErr(err);
@@ -93,7 +49,12 @@ namespace haris {
         );
         double sampleRatio = FRAMES_PER_BUFFER / (double)SAMPLE_RATE;
         spectroData->startIndex = std::ceil(sampleRatio * SPECTRO_FREQ_START);
-        spectroData->spectroSize = mymin(std::ceil(sampleRatio * SPECTRO_FREQ_END), FRAMES_PER_BUFFER/2.0) - spectroData->startIndex;
+        spectroData->spectroSize = mymin(std::ceil(sampleRatio * SPECTRO_FREQ_END), FRAMES_PER_BUFFER / 2.0) - spectroData->startIndex;
+
+        spectroData->vol_l = &vol_l;
+        spectroData->freqDisplay = &freqDisplay;
+        spectroData->vol_r = &vol_r;
+        spectroData->numBars = &numBars;
 
         int numDevices = Pa_GetDeviceCount();
         printf("Number of devices: %d\n", numDevices);
@@ -107,17 +68,7 @@ namespace haris {
             exit(EXIT_SUCCESS);
         }
 
-        const PaDeviceInfo* deviceInfo;
-        for (int i = 0; i < numDevices; i++) {
-            deviceInfo = Pa_GetDeviceInfo(i);
-            printf("Device %d:\n", i);
-            printf("  name: %s\n", deviceInfo->name);
-            printf("  maxInputChannels: %d\n", deviceInfo->maxInputChannels);
-            printf("  maxOutputChannels: %d\n", deviceInfo->maxOutputChannels);
-            printf("  defaultSampleRate: %f\n", deviceInfo->defaultSampleRate);
-        }
-
-        int inputdevice = 0;
+        int inputdevice = WINDOWS_DEFAULT_AUDIO_DEVICE;
 
         PaStreamParameters inputParameters;
         PaStreamParameters outputParameters;
@@ -142,7 +93,50 @@ namespace haris {
         AudioCapture::checkErr(err);
 
         err = Pa_StartStream(stream);
-        AudioCapture::checkErr(err);        
+        AudioCapture::checkErr(err);
+	}
+
+    int AudioCapture::patestCallback(
+        const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
+        const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
+        void* userData
+    ) {
+        float* in = (float*)inputBuffer;
+        (void)outputBuffer;
+        streamCallbackData* callbackData = (streamCallbackData*)userData;
+
+        for (unsigned long i = 0; i < framesPerBuffer; i++) {
+            callbackData->in[i] = (in[i * NUM_CHANNELS]);
+        }
+
+        fftw_execute(callbackData->p);
+        int numBars = *((streamCallbackData*)userData)->numBars;
+        float* freqDisplay = ((streamCallbackData*)userData)->freqDisplay;
+
+        for (int i = 0; i < numBars; i++) {
+            //double proportion = std::pow(i / (double)dispSize, 3);
+            double proportion = i / (double)numBars;
+            double frequency = callbackData->out[(int)(callbackData->startIndex + proportion * callbackData->spectroSize)];
+            freqDisplay[i] = frequency;
+        }
+        //operate on the fourier transform
+
+        float temp_vol_l = 0;
+        float temp_vol_r = 0;
+
+        for (unsigned long i = 0; i < framesPerBuffer * 2; i += 2) {
+            temp_vol_l = AudioCapture::mymax(temp_vol_l, std::abs(in[i]));
+            temp_vol_r = AudioCapture::mymax(temp_vol_r, std::abs(in[i + 1]));
+        }
+
+        *((streamCallbackData*)userData)->vol_l = temp_vol_l;
+        *((streamCallbackData*)userData)->vol_r = temp_vol_r;
+
+        return 0;
+    }
+
+    void AudioCapture::changeNumBars(int& numBars) {
+        spectroData->numBars = &numBars;
     }
 
     void AudioCapture::terminate() {
