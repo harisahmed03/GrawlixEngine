@@ -6,6 +6,7 @@
 #define SAMPLE_RATE 44100
 #define FRAMES_PER_BUFFER 1024
 #define NUM_CHANNELS 2
+#define RESOLUTION SAMPLE_RATE/FRAMES_PER_BUFFER
 
 #define SPECTRO_FREQ_START 20
 #define SPECTRO_FREQ_END 1000
@@ -14,6 +15,7 @@
 
 namespace haris {
 
+    //User data that we pass to the portaudio audio callback function
     typedef struct {
         double* in;
         double* out;
@@ -25,13 +27,14 @@ namespace haris {
         float* vol_r;
         float* freqDisplay;
         int* numBars;
+        float* hertz;
 
     } streamCallbackData;
 
     static streamCallbackData* spectroData;
     PaStream* stream;
 
-	AudioCapture::AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars) {
+	AudioCapture::AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars, float& hertz) {
         PaError err;
         err = Pa_Initialize();
         AudioCapture::checkErr(err);
@@ -55,6 +58,7 @@ namespace haris {
         spectroData->freqDisplay = &freqDisplay;
         spectroData->vol_r = &vol_r;
         spectroData->numBars = &numBars;
+        spectroData->hertz = &hertz;
 
         int numDevices = Pa_GetDeviceCount();
         printf("Number of devices: %d\n", numDevices);
@@ -114,7 +118,7 @@ namespace haris {
         float* freqDisplay = ((streamCallbackData*)userData)->freqDisplay;
 
         for (int i = 0; i < numBars; i++) {
-            //double proportion = std::pow(i / (double)dispSize, 3);
+            //double proportion = std::pow(i / (double)numBars, 2);
             double proportion = i / (double)numBars;
             double frequency = callbackData->out[(int)(callbackData->startIndex + proportion * callbackData->spectroSize)];
             freqDisplay[i] = frequency;
@@ -123,14 +127,24 @@ namespace haris {
 
         float temp_vol_l = 0;
         float temp_vol_r = 0;
+        int maxVolIndex_l = 0;
+        int maxVolIndex_r = 0;
 
         for (unsigned long i = 0; i < framesPerBuffer * 2; i += 2) {
-            temp_vol_l = AudioCapture::mymax(temp_vol_l, std::abs(in[i]));
-            temp_vol_r = AudioCapture::mymax(temp_vol_r, std::abs(in[i + 1]));
+            if (temp_vol_l < std::abs(in[i])) {
+                temp_vol_l = in[i];
+                maxVolIndex_l = i;
+            }
+            if (temp_vol_l < std::abs(in[i+1])) {
+                temp_vol_r = in[i];
+                maxVolIndex_r = i;
+            }
         }
 
+        //printN(frequency);
+
         *((streamCallbackData*)userData)->vol_l = temp_vol_l;
-        *((streamCallbackData*)userData)->vol_r = temp_vol_r;
+        *((streamCallbackData*)userData)->vol_r = temp_vol_r;        
 
         return 0;
     }

@@ -8,7 +8,7 @@
 namespace haris {
 	class AudioCapture {
 	public:
-		AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars);
+		AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars, float& hertz);
 		PaError err;
 
 		static void checkErr(PaError err) {
@@ -32,6 +32,12 @@ namespace haris {
 			swprintf(charBuffer, 2000, L"PortAudio error: %s\n", message);
 			OutputDebugString(charBuffer);
 			exit(EXIT_FAILURE);
+		}
+
+		static void printN(float message) {
+			wchar_t charBuffer[2000];
+			swprintf(charBuffer, 2000, L"Hertz %f\n", message);
+			OutputDebugString(charBuffer);
 		}
 
 		static inline float mymax(float a, float b) {

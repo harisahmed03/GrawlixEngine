@@ -36,8 +36,8 @@ namespace haris
 	struct triangle {
 		vec3d p[3];
 		float h[3] = { 1.0f, 0.5f, 1.0f };
-		RGBColor fillColor;
-		RGBColor outlineColor;
+		RGBColor fillColor = { 255, 255, 255 };
+		RGBColor outlineColor = { 255, 255, 255 };
 	};
 
 	struct mesh {
@@ -49,9 +49,10 @@ namespace haris
 		bool linkVolume = false;
 		bool linkFrequency = false;
 		bool linkPitch = false;
+		bool linkTheta = false;
 
 		bool drawWireframe = false;
-		bool drawFilled = true;
+		bool drawFilled = false;
 		bool drawShaded = false;
 
 		bool loadFromObjectFile(std::string sFilename)
@@ -101,7 +102,7 @@ namespace haris
 		vec3d vLookDir;
 		float horizontalYaw = 0;
 		float verticalYaw = 0;
-		float moveSpeed = 15;
+		float moveSpeed = 30;
 		float lookSpeed = 5;
 	};
 
@@ -146,18 +147,17 @@ namespace haris
 
 		static void fillRectangle(const Rect& rect, const RGBColor& color);
 
-		static void initVars();
-
 		static void display2DFrequencyBars(float* freq);
 
-		static void display3DFrequencyBars(mesh& barMesh, float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView, int& numBars);
+		static void display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float* freq, int& numBars);
 
-		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r);
+		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float& hertz);
 
-		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars);
+		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz);
 
 		static mat4x4 GetCameraViewMatrix(float deltaTime);
 
+		inline static void setScene();
 		
 
 	private:

@@ -145,7 +145,9 @@
     <Text Include="axis.txt" />
     <Text Include="Cube.txt" />
     <Text Include="FlatGround.txt" />
+    <Text Include="Gun.txt" />
     <Text Include="Ship.txt" />
+    <Text Include="Spongebob.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

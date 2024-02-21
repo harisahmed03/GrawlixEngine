@@ -10,6 +10,8 @@ namespace haris
 		windowTitle = L"Haris's App";
 		windowWidth = 800;
 		windowHeight = 800;
+		timePassed = 0.0;
+		frames = 0;
 	}
 
 	//handles window events
@@ -66,14 +68,15 @@ namespace haris
 		case WM_PAINT: {
 			OutputDebugString(L"Window paint\n");
 			PAINTSTRUCT paint;
-			HDC device_context = BeginPaint(windowHandle, &paint);
-
+			HDC deviceContext = BeginPaint(windowHandle, &paint);
 			int width, height;
 			Renderer::getWindowDimensions(&width, &height);
-			Renderer::coppyBufferToWindow(device_context, width, height);
-
 			EndPaint(windowHandle, &paint);
 		}break;
+
+		case WM_ERASEBKGND: {
+			return (LRESULT)1;
+		}
 
 		default:
 			result = DefWindowProc(windowHandle, message, wParam, lParam);
@@ -138,6 +141,7 @@ namespace haris
 			LARGE_INTEGER last_counter;
 			QueryPerformanceCounter(&last_counter);
 
+
 			while (running) {
 
 				LARGE_INTEGER current_counter;
@@ -149,6 +153,8 @@ namespace haris
 
 				last_counter = current_counter;
 
+				timePassed += delta;
+				frames++;
 
 				//process windows messages
 				MSG message;
@@ -170,6 +176,18 @@ namespace haris
 
 				int width, height;
 				Renderer::getWindowDimensions(&width, &height);
+
+				if (timePassed >= 1.0f)
+				{
+					wsprintfW(buffer, L"%d", frames);		
+					frames = 0;
+					timePassed = 0;
+				}	
+				RECT rc;
+				GetClientRect(windowHandle, &rc);
+				SetBkMode(deviceContext, TRANSPARENT);
+
+				DrawText(deviceContext, buffer, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 
 				Renderer::coppyBufferToWindow(deviceContext, width, height);
 

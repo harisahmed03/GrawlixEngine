@@ -22,7 +22,7 @@ namespace haris {
 
 	Camera myCamera;
 
-	float sensitivity = 15.0f;
+	float sensitivity = 25.0f;
 
 	int screenWidth, screenHeight;
 
@@ -32,14 +32,18 @@ namespace haris {
 	Renderer::Renderer() {
 		buffer = {};
 		clearColor = { 255, 255, 255 };
-		screenHeight = 800;
 		screenWidth = 800;
+		screenHeight = 800;
 
 		pDepthBuffer = new float[screenHeight * screenWidth];
 		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
 
 		matProj = Matrix_MakeProjection(90.0f, 1.0f, 0.1f, 1000.0f);
 
+		setScene();
+	}
+
+	void haris::Renderer::setScene() {
 		//Cube
 		mesh meshCube;
 		meshCube.loadFromObjectFile("Cube.txt");
@@ -48,14 +52,14 @@ namespace haris {
 		}
 		else {
 			meshCube.randomizeTriColors();
-			meshCube.coordinates = { 0, 5, 0, 0 };
+			meshCube.coordinates = { 0, 5, 15, 0 };
 			meshCube.rotation = { 0, 0, 0, 0 };
-			meshCube.drawFilled = false;
-			meshCube.drawShaded = false;
-			meshCube.drawWireframe = true;
+			meshCube.drawShaded = true;
+			//meshCube.drawWireframe = true;
 			meshCube.linkVolume = true;
+			meshCube.linkTheta = true;
 			myMeshes.push_back(meshCube);
-		}	
+		}
 
 		//Ground
 		/*mesh meshFlatGround;
@@ -73,34 +77,58 @@ namespace haris {
 		//Bar used for frequency display
 		mesh meshBar;
 		meshBar.loadFromObjectFile("Cube.txt");
-		if (meshCube.tris.size() == 0) {
+		if (meshBar.tris.size() == 0) {
 			myPrint("Could not load an object");
 		}
 		else {
 			meshBar.randomizeTriColors();
-			meshBar.coordinates = { 0, 0, 10, 0 };
-			meshBar.scale = { 2, 1, 2, 0 };
-			meshBar.drawFilled = false;
-			meshBar.drawShaded = false;
-			meshBar.drawWireframe = true;
+			meshBar.coordinates = { 0, 0, 60, 0 };
+			meshBar.scale = { 1, 1, 1, 0 };
+			//meshBar.drawWireframe = true;
+			meshBar.drawFilled = true;
+			//meshBar.linkTheta = true;
 			frequencyMeshes.push_back(meshBar);
+		}
+
+		mesh meshGun;
+		meshGun.loadFromObjectFile("Gun.txt");
+		if (meshGun.tris.size() == 0) {
+			myPrint("Could not load an object");
+		}
+		else {
+			meshGun.randomizeTriColors();
+			meshGun.coordinates = { 0, 0, 30, 0 };
+			meshGun.scale = { 1, 1, 1, 0 };
+			meshGun.drawFilled = true;
+			//meshGun.drawWireframe = true;
+			//myMeshes.push_back(meshGun);
 		}
 	}
 
-
-	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars) {
-
+	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz) {
+		
 		mat4x4 matView = GetCameraViewMatrix(delta);
 
 		float zero = 0;
 		for (auto& m : frequencyMeshes) {
-			display3DFrequencyBars(m, theta, vol_l, vol_r, freq, matView, numBars);
+			display3DFrequencyBars(m, matView, delta, theta, vol_l, vol_r, freq, numBars);
 		}
 		
 		for (auto& m : myMeshes) {
-			draw3dMesh(m, matView, theta, vol_l, vol_r);
+			draw3dMesh(m, matView, delta, theta, vol_l, vol_r, hertz);
 		}
 		
+		if (haris::Input::isKeyPressed(H_O)) {
+			for (auto& m : frequencyMeshes) {
+				m.randomizeTriColors();
+			}
+		}
+
+		if (haris::Input::isKeyPressed(H_I)) {
+			for (auto& m : myMeshes) {
+				m.randomizeTriColors();
+			}
+		}
 		//display2DFrequencyBars(freq);
 
 		//Clear depth buffer
@@ -158,16 +186,27 @@ namespace haris {
 		return Matrix_QuickInverse(matCamera);
 	}
 	
-	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& theta, float& vol_l, float& vol_r) {
+	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float& hertz) {
 
-		mat4x4 matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
-		mat4x4 matRotY = Matrix_MakeRotationY(myMesh.rotation.y);
-		mat4x4 matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
+		mat4x4 matRotX;
+		mat4x4 matRotY;
+		mat4x4 matRotZ;
 
+		if (myMesh.linkTheta) {
+			matRotX = Matrix_MakeRotationX(myMesh.rotation.x + (theta * delta));
+			matRotY = Matrix_MakeRotationY(myMesh.rotation.y + (theta * delta));
+			matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z + (theta * delta));
+		}
+		else {
+			matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
+			matRotY = Matrix_MakeRotationY(myMesh.rotation.y);
+			matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
+		}
+		
 		mat4x4 matScale;
 
 		if (myMesh.linkVolume) {
-			float volStuff = 1.0f + (vol_l * sensitivity);
+			float volStuff = 1.0f + (std::abs((vol_l+vol_r)/2) * sensitivity);
 			matScale = Matrix_MakeScale(myMesh.scale.x + volStuff, myMesh.scale.y + volStuff, myMesh.scale.z + volStuff);
 		}
 		else {
@@ -289,18 +328,19 @@ namespace haris {
 		}
 	}
 
-	void Renderer::display3DFrequencyBars(mesh& barMesh, float& theta, float& vol_l, float& vol_r, float* freq, mat4x4& matView, int& numBars) {
+	void Renderer::display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float* freq, int& numBars) {
 
 		mat4x4 matRotZ = Matrix_MakeRotationZ( barMesh.rotation.z);
 		mat4x4 matRotX = Matrix_MakeRotationX( theta + barMesh.rotation.x);
+		float h = 1;
 
 		for (int b = 0; b < numBars; b++) {
 			mesh myMesh = barMesh;
 
-			myMesh.scale = { myMesh.scale.x, myMesh.scale.y + freq[b], myMesh.scale.z };	//spreads bars across X axis
+			myMesh.scale = { myMesh.scale.x, myMesh.scale.y + std::abs(freq[b]), myMesh.scale.z };	//spreads bars across X axis
 			myMesh.coordinates = { (numBars / 2 - b) * (myMesh.scale.x * 2) + myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z };
 
-			draw3dMesh(myMesh, matView, theta, vol_l, vol_r);
+			draw3dMesh(myMesh, matView, delta, theta, vol_l, vol_r, h);
 		}
 	}
 	
@@ -389,11 +429,11 @@ namespace haris {
 		}
 
 		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);
-		std::vector<float> zab = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[1].y, 1/tri.p[1].z);
+		std::vector<float> zab = interpolate(tri.p[0].y, 1 / tri.p[0].z, tri.p[1].y, 1 / tri.p[1].z);
 		std::vector<float> xbc = interpolate(tri.p[1].y, tri.p[1].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zbc = interpolate(tri.p[1].y, 1/tri.p[1].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> zbc = interpolate(tri.p[1].y, 1 / tri.p[1].z, tri.p[2].y, 1 / tri.p[2].z);
 		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zac = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[2].y, 1/tri.p[2].z);
+		std::vector<float> zac = interpolate(tri.p[0].y, 1 / tri.p[0].z, tri.p[2].y, 1 / tri.p[2].z);
 
 		int numPixels = xab.size() + xbc.size() - 1;
 		std::vector<float> xabc;
@@ -458,12 +498,15 @@ namespace haris {
 		// Sort the points so that y0 <= y1 <= y2
 		if (tri.p[1].y < tri.p[0].y) {
 			std::swap(tri.p[1], tri.p[0]);
+			std::swap(tri.h[1], tri.h[0]);
 		}
 		if (tri.p[2].y < tri.p[0].y) {
 			std::swap(tri.p[0], tri.p[2]);
+			std::swap(tri.h[2], tri.h[0]);
 		}
 		if (tri.p[2].y < tri.p[1].y) {
 			std::swap(tri.p[1], tri.p[2]);
+			std::swap(tri.h[1], tri.h[2]);
 		}
 
 		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);

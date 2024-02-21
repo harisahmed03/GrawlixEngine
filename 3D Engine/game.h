@@ -22,6 +22,10 @@ namespace haris
 		std::wstring windowTitle;
 		int windowWidth, windowHeight;
 
+		float timePassed;
+		int frames;
+		wchar_t buffer[256];
+
 		std::function<void(float delta)> update;
 
 	public:
