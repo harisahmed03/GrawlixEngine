@@ -95,8 +95,8 @@ namespace haris {
 			meshBar.coordinates = { 0, 0, 60, 0 };
 			meshBar.scale = { 1, 1, 1, 0 };
 			//meshBar.drawWireframe = true;
-			//meshBar.drawFilled = true;
-			meshBar.drawShaded = true;
+			meshBar.drawFilled = true;
+			//meshBar.drawShaded = true;
 			//meshBar.linkTheta = true;
 			frequencyMeshes.push_back(meshBar);
 		}
@@ -206,9 +206,9 @@ namespace haris {
 		if (myCamera.lockMovement == false) {
 			
 			if (haris::Input::isKeyPressed(H_A))
-				x = 1;
-			else if (haris::Input::isKeyPressed(H_D))
 				x = -1;
+			else if (haris::Input::isKeyPressed(H_D))
+				x = 1;
 
 			if (haris::Input::isKeyPressed(H_SPACE))
 				y = 1;
@@ -231,8 +231,7 @@ namespace haris {
 				verticalYaw = -1;			
 		}
 
-		vec3d position = { x * myCamera.moveSpeed * deltaTime, y * myCamera.moveSpeed * deltaTime, z * myCamera.moveSpeed * deltaTime };
-		myCamera.vCamera = Vector_Add(myCamera.vCamera, position);
+		
 		myCamera.horizontalYaw += horizontalYaw * myCamera.lookSpeed * deltaTime;
 		myCamera.verticalYaw += verticalYaw * myCamera.lookSpeed * deltaTime;
 
@@ -243,6 +242,15 @@ namespace haris {
 		mat4x4 matCameraRotY = Matrix_MakeRotationY(myCamera.horizontalYaw);
 		myCamera.vLookDir = Matrix_MultiplyVector(matCameraRotX, vTarget);
 		myCamera.vLookDir = Matrix_MultiplyVector(matCameraRotY, myCamera.vLookDir);
+
+		vec3d vForward = Vector_Normalise(myCamera.vLookDir);
+		vec3d vRight = Vector_CrossProduct(vForward, vUp);
+		vRight = Vector_Mul(vRight, myCamera.moveSpeed * deltaTime * x);
+		vForward = Vector_Mul(vForward, myCamera.moveSpeed * deltaTime * z);
+
+		myCamera.vCamera = Vector_Add(myCamera.vCamera, vRight);
+		myCamera.vCamera = Vector_Add(myCamera.vCamera, vForward);
+
 		vTarget = Vector_Add(myCamera.vCamera, myCamera.vLookDir);
 
 		mat4x4 matCamera = Matrix_PointAt(myCamera.vCamera, vTarget, vUp);
