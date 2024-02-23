@@ -141,7 +141,6 @@ namespace haris
 			LARGE_INTEGER last_counter;
 			QueryPerformanceCounter(&last_counter);
 
-
 			while (running) {
 
 				LARGE_INTEGER current_counter;
@@ -186,8 +185,8 @@ namespace haris
 				RECT rc;
 				GetClientRect(windowHandle, &rc);
 				SetBkMode(deviceContext, TRANSPARENT);
-
-				DrawText(deviceContext, buffer, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+				SetTextColor(deviceContext, 0x0000FF00);
+				DrawText(deviceContext, buffer, -1, &rc, DT_TOP | DT_LEFT);
 
 				Renderer::coppyBufferToWindow(deviceContext, width, height);
 

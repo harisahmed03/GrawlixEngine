@@ -2,6 +2,7 @@
 #include "AudioCapture.h"
 #include <fftw3.h>
 #include <cmath>
+#include <sndfile.h>
 
 #define SAMPLE_RATE 44100
 #define FRAMES_PER_BUFFER 1024
@@ -28,6 +29,7 @@ namespace haris {
         float* freqDisplay;
         int* numBars;
         float* hertz;
+        SNDFILE** sndFile;
 
     } streamCallbackData;
 
@@ -75,7 +77,6 @@ namespace haris {
         int inputdevice = WINDOWS_DEFAULT_AUDIO_DEVICE;
 
         PaStreamParameters inputParameters;
-        PaStreamParameters outputParameters;
 
         memset(&inputParameters, 0, sizeof(inputParameters));
         inputParameters.channelCount = NUM_CHANNELS;
@@ -91,16 +92,16 @@ namespace haris {
             SAMPLE_RATE,
             FRAMES_PER_BUFFER,
             paNoFlag,
-            patestCallback,
+            microphoneAudioCallback,
             spectroData
         );
         AudioCapture::checkErr(err);
 
         err = Pa_StartStream(stream);
-        AudioCapture::checkErr(err);
+        AudioCapture::checkErr(err);  
 	}
 
-    int AudioCapture::patestCallback(
+    int AudioCapture::microphoneAudioCallback(
         const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
         const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
         void* userData

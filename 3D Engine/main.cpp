@@ -18,7 +18,7 @@ framework_app_entry_point
 
 		static float theta = 0.0;
 		
-		theta = delta;
+		theta += 1.0f * delta;
 
 		haris::Renderer::RenderScene(theta, delta, vol_l, vol_r, freqDisplay, numBars, hertz);
 

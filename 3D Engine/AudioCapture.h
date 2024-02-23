@@ -17,7 +17,13 @@ namespace haris {
 				exit(EXIT_FAILURE);
 			}
 		}
-		static int patestCallback(
+		static int microphoneAudioCallback(
+			const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
+			const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
+			void* userData
+		);
+
+		static int fileAudioCallback(
 			const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
 			const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
 			void* userData

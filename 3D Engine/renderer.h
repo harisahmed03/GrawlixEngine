@@ -33,15 +33,23 @@ namespace haris
 		float w = 1;
 	};
 
+	struct Point3D {
+		vec3d coordinates;
+		float h = 1.0f;
+		vec3d normal;
+	};
+
 	struct triangle {
-		vec3d p[3];
-		float h[3] = { 1.0f, 0.5f, 1.0f };
+		Point3D p[3];
 		RGBColor fillColor = { 255, 255, 255 };
 		RGBColor outlineColor = { 255, 255, 255 };
 	};
 
 	struct mesh {
 		std::vector<triangle> tris;
+		std::vector<triangle> trisTransformed;
+		bool hasChanged = true;	//If any transform has been applied, retransform
+
 		vec3d coordinates = { 0, 0, 0 };
 		vec3d rotation = { 0, 0, 0 };
 		vec3d scale = { 1, 1, 1 };
@@ -54,6 +62,8 @@ namespace haris
 		bool drawWireframe = false;
 		bool drawFilled = false;
 		bool drawShaded = false;
+
+		bool moveMesh = false;
 
 		bool loadFromObjectFile(std::string sFilename)
 		{
@@ -81,7 +91,11 @@ namespace haris
 				{
 					int f[3];
 					s >> junk >> f[0] >> f[1] >> f[2];
-					tris.push_back({ verts[f[0] - 1], verts[f[1] - 1], verts[f[2] - 1] });
+					triangle temp;
+					temp.p[0].coordinates = verts[f[0] - 1];
+					temp.p[1].coordinates = verts[f[1] - 1];
+					temp.p[2].coordinates = verts[f[2] - 1];
+					tris.push_back(temp);
 				}
 			}
 			return true;
@@ -95,6 +109,13 @@ namespace haris
 				tris.at(i).outlineColor = o;
 			}
 		}
+
+		void setTriColors(RGBColor fillColor, RGBColor outlineColor) {
+			for (int i = 0; i < tris.size(); i++) {
+				tris.at(i).fillColor = fillColor;
+				tris.at(i).outlineColor = outlineColor;
+			}
+		}
 	};
 
 	struct Camera {
@@ -103,7 +124,8 @@ namespace haris
 		float horizontalYaw = 0;
 		float verticalYaw = 0;
 		float moveSpeed = 30;
-		float lookSpeed = 5;
+		float lookSpeed = 200;
+		bool lockMovement = false;
 	};
 
 	class Renderer {
@@ -145,21 +167,26 @@ namespace haris
 
 		static void drawShadedTriangle(triangle tri, const RGBColor& color);
 
-		static void fillRectangle(const Rect& rect, const RGBColor& color);
+		static void drawFilledRectangle(const Rect& rect, const RGBColor& color);
 
 		static void display2DFrequencyBars(float* freq);
 
+		static void transformTris(mesh& myMesh, float& theta, float& vol_l, float& vol_r);
+
 		static void display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float* freq, int& numBars);
 
-		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float& hertz);
+		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r);
 
 		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz);
 
 		static mat4x4 GetCameraViewMatrix(float deltaTime);
 
+		static void RotateDirectionalLight(vec3d rotation);
+
+		static void MoveMesh(mesh& myMesh, float& deltaTime);
+
 		inline static void setScene();
 		
-
 	private:
 		static void myPrint(std::string message) {
 			wchar_t charBuffer[256];
@@ -255,8 +282,9 @@ namespace haris
 			return matrix;
 		}
 
-		static mat4x4 Matrix_MakeRotationX(float fAngleRad)
+		static mat4x4 Matrix_MakeRotationX(float fAngleDeg)
 		{
+			float fAngleRad = DegreesToRadian(fAngleDeg);
 			mat4x4 matrix;
 			matrix.m[0][0] = 1.0f;
 			matrix.m[1][1] = cosf(fAngleRad);
@@ -267,8 +295,9 @@ namespace haris
 			return matrix;
 		}
 
-		static mat4x4 Matrix_MakeRotationY(float fAngleRad)
+		static mat4x4 Matrix_MakeRotationY(float fAngleDeg)
 		{
+			float fAngleRad = DegreesToRadian(fAngleDeg);
 			mat4x4 matrix;
 			matrix.m[0][0] = cosf(fAngleRad);
 			matrix.m[0][2] = sinf(fAngleRad);
@@ -279,8 +308,9 @@ namespace haris
 			return matrix;
 		}
 
-		static mat4x4 Matrix_MakeRotationZ(float fAngleRad)
+		static mat4x4 Matrix_MakeRotationZ(float fAngleDeg)
 		{
+			float fAngleRad = DegreesToRadian(fAngleDeg);
 			mat4x4 matrix;
 			matrix.m[0][0] = cosf(fAngleRad);
 			matrix.m[0][1] = sinf(fAngleRad);
@@ -417,16 +447,16 @@ namespace haris
 			return v;
 		}
 
-		static vec3d Vector_IntersectPlane(vec3d& plane_p, vec3d& plane_n, vec3d& lineStart, vec3d& lineEnd)
+		static vec3d Vector_IntersectPlane(vec3d& plane_p, vec3d& plane_n, Point3D& lineStart, Point3D& lineEnd)
 		{
 			plane_n = Vector_Normalise(plane_n);
 			float plane_d = -Vector_DotProduct(plane_n, plane_p);
-			float ad = Vector_DotProduct(lineStart, plane_n);
-			float bd = Vector_DotProduct(lineEnd, plane_n);
+			float ad = Vector_DotProduct(lineStart.coordinates, plane_n);
+			float bd = Vector_DotProduct(lineEnd.coordinates, plane_n);
 			float t = (-plane_d - ad) / (bd - ad);
-			vec3d lineStartToEnd = Vector_Sub(lineEnd, lineStart);
+			vec3d lineStartToEnd = Vector_Sub(lineEnd.coordinates, lineStart.coordinates);
 			vec3d lineToIntersect = Vector_Mul(lineStartToEnd, t);
-			return Vector_Add(lineStart, lineToIntersect);
+			return Vector_Add(lineStart.coordinates, lineToIntersect);
 		}
 
 		static int Triangle_ClipAgainstPlane(vec3d plane_p, vec3d plane_n, triangle& in_tri, triangle& out_tri1, triangle& out_tri2)
@@ -441,13 +471,13 @@ namespace haris
 					return (plane_n.x * p.x + plane_n.y * p.y + plane_n.z * p.z - Vector_DotProduct(plane_n, plane_p));
 				};
 
-			vec3d* inside_points[3];  int nInsidePointCount = 0;
-			vec3d* outside_points[3]; int nOutsidePointCount = 0;
+			Point3D* inside_points[3];  int nInsidePointCount = 0;
+			Point3D* outside_points[3]; int nOutsidePointCount = 0;
 
 			// Get signed distance of each point in triangle to plane
-			float d0 = dist(in_tri.p[0]);
-			float d1 = dist(in_tri.p[1]);
-			float d2 = dist(in_tri.p[2]);
+			float d0 = dist(in_tri.p[0].coordinates);
+			float d1 = dist(in_tri.p[1].coordinates);
+			float d2 = dist(in_tri.p[2].coordinates);
 
 			if (d0 >= 0) { inside_points[nInsidePointCount++] = &in_tri.p[0]; }
 			else { outside_points[nOutsidePointCount++] = &in_tri.p[0]; }
@@ -472,10 +502,15 @@ namespace haris
 			{
 				out_tri1.fillColor = in_tri.fillColor;
 				out_tri1.outlineColor = in_tri.outlineColor;
+
+				out_tri1.p[0].h = in_tri.p[0].h;
+				out_tri1.p[1].h = in_tri.p[1].h;
+				out_tri1.p[2].h = in_tri.p[2].h;
+
 				out_tri1.p[0] = *inside_points[0];
 
-				out_tri1.p[1] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
-				out_tri1.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[1]);
+				out_tri1.p[1].coordinates = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
+				out_tri1.p[2].coordinates = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[1]);
 
 				return 1; // Return the newly formed single triangle
 			}
@@ -488,16 +523,32 @@ namespace haris
 				out_tri2.fillColor = in_tri.fillColor;
 				out_tri2.outlineColor = in_tri.outlineColor;
 
+				out_tri1.p[0].h = in_tri.p[0].h;
+				out_tri1.p[1].h = in_tri.p[1].h;
+				out_tri1.p[2].h = in_tri.p[2].h;
+
+				out_tri2.p[0].h = in_tri.p[0].h;
+				out_tri2.p[1].h = in_tri.p[1].h;
+				out_tri2.p[2].h = in_tri.p[2].h;
+
 				out_tri1.p[0] = *inside_points[0];
 				out_tri1.p[1] = *inside_points[1];
-				out_tri1.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
+				out_tri1.p[2].coordinates = Vector_IntersectPlane(plane_p, plane_n, *inside_points[0], *outside_points[0]);
 
 				out_tri2.p[0] = *inside_points[1];
 				out_tri2.p[1] = out_tri1.p[2];
-				out_tri2.p[2] = Vector_IntersectPlane(plane_p, plane_n, *inside_points[1], *outside_points[0]);
+				out_tri2.p[2].coordinates = Vector_IntersectPlane(plane_p, plane_n, *inside_points[1], *outside_points[0]);
 
 				return 2; // Return two newly formed triangles which form a quad
 			}
+		}
+
+		static float Vector_Distance(vec3d& vector1, vec3d& vector2) {
+			return std::pow(std::pow((vector2.x - vector1.x), 2) + std::pow((vector2.y - vector1.y), 2) + std::pow((vector2.z - vector1.z), 2), 0.5f);
+		}
+
+		static float DegreesToRadian(float& degrees) {
+			return degrees * (3.14159 / 180);
 		}
 
 	private:

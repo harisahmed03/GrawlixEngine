@@ -1,4 +1,5 @@
 #define NOMINMAX
+#define _USE_MATH_DEFINES
 #include "renderer.h"
 #include <cstdlib>
 #include <algorithm>
@@ -10,6 +11,10 @@
 #include <iterator>
 
 namespace haris {
+
+	struct globalSettings {
+
+	};
 	using std::min;
 	using std::max;
 
@@ -19,6 +24,7 @@ namespace haris {
 
 	std::list<mesh> myMeshes;
 	std::list<mesh> frequencyMeshes;
+	std::list<mesh> pointLightMeshes;
 
 	Camera myCamera;
 
@@ -27,6 +33,9 @@ namespace haris {
 	int screenWidth, screenHeight;
 
 	bool clippingEnabled = false;
+
+	vec3d directionalLight;
+	float ambientLightingIntensity = 0.2;
 
 	//Create init function
 	Renderer::Renderer() {
@@ -44,9 +53,10 @@ namespace haris {
 	}
 
 	void haris::Renderer::setScene() {
+		
 		//Cube
 		mesh meshCube;
-		meshCube.loadFromObjectFile("Cube.txt");
+		meshCube.loadFromObjectFile("Icosphere.txt");
 		if (meshCube.tris.size() == 0) {
 			myPrint("Could not load an object");
 		}
@@ -57,22 +67,22 @@ namespace haris {
 			meshCube.drawShaded = true;
 			//meshCube.drawWireframe = true;
 			meshCube.linkVolume = true;
-			meshCube.linkTheta = true;
+			//meshCube.linkTheta = true;
 			myMeshes.push_back(meshCube);
 		}
 
 		//Ground
-		/*mesh meshFlatGround;
+		mesh meshFlatGround;
 		meshFlatGround.loadFromObjectFile("FlatGround.txt");
 		if (meshCube.tris.size() == 0) {
 			exit(0);
 		}
 		meshFlatGround.randomizeTriColors();
 		meshFlatGround.scale = { 1, 1, 1, 0 };
-		meshFlatGround.drawFilled = true;
-		meshFlatGround.drawShaded = false;
+		//meshFlatGround.drawFilled = true;
+		meshFlatGround.drawShaded = true;
 		meshFlatGround.drawWireframe = false;
-		myMeshes.push_back(meshFlatGround);*/
+		//myMeshes.push_back(meshFlatGround);
 
 		//Bar used for frequency display
 		mesh meshBar;
@@ -85,7 +95,8 @@ namespace haris {
 			meshBar.coordinates = { 0, 0, 60, 0 };
 			meshBar.scale = { 1, 1, 1, 0 };
 			//meshBar.drawWireframe = true;
-			meshBar.drawFilled = true;
+			//meshBar.drawFilled = true;
+			meshBar.drawShaded = true;
 			//meshBar.linkTheta = true;
 			frequencyMeshes.push_back(meshBar);
 		}
@@ -96,26 +107,41 @@ namespace haris {
 			myPrint("Could not load an object");
 		}
 		else {
-			meshGun.randomizeTriColors();
+			//meshGun.randomizeTriColors();
 			meshGun.coordinates = { 0, 0, 30, 0 };
 			meshGun.scale = { 1, 1, 1, 0 };
-			meshGun.drawFilled = true;
+			meshGun.drawShaded = true;
 			//meshGun.drawWireframe = true;
 			//myMeshes.push_back(meshGun);
 		}
+
+		mesh meshLightDirection;
+		meshLightDirection.loadFromObjectFile("Arrow.txt");
+		meshLightDirection.coordinates = { 30, 0, 0 };
+		meshLightDirection.drawFilled = true;
+		meshLightDirection.randomizeTriColors();
+		meshLightDirection.rotation = { 0, -90, 0, 0 };
+		meshLightDirection.moveMesh = true;
+		//meshLightDirection.scale = { 0.1, 0.1, 0.1 };
+		myMeshes.push_back(meshLightDirection);
+
 	}
 
 	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz) {
 		
 		mat4x4 matView = GetCameraViewMatrix(delta);
 
-		float zero = 0;
+		RotateDirectionalLight({ theta * 50, theta * 10, theta * 100 });
+
 		for (auto& m : frequencyMeshes) {
 			display3DFrequencyBars(m, matView, delta, theta, vol_l, vol_r, freq, numBars);
 		}
 		
 		for (auto& m : myMeshes) {
-			draw3dMesh(m, matView, delta, theta, vol_l, vol_r, hertz);
+			if (m.moveMesh && myCamera.lockMovement) {
+				MoveMesh(m, delta);
+			}
+			draw3dMesh(m, matView, delta, theta, vol_l, vol_r);
 		}
 		
 		if (haris::Input::isKeyPressed(H_O)) {
@@ -135,12 +161,12 @@ namespace haris {
 		clearDepthBuffer(pDepthBuffer, screenWidth, screenHeight);
 	}
 
-	mat4x4 Renderer::GetCameraViewMatrix(float deltaTime) {
+	void Renderer::MoveMesh(mesh& myMesh, float& deltaTime) {
 		float x = 0;
 		float y = 0;
 		float z = 0;
-		float horizontalYaw = 0;
-		float verticalYaw = 0;
+
+		float moveSpeed = 30;
 
 		if (haris::Input::isKeyPressed(H_A))
 			x = 1;
@@ -157,15 +183,53 @@ namespace haris {
 		else if (haris::Input::isKeyPressed(H_S))
 			z = -1;
 
-		if (haris::Input::isKeyPressed(H_RIGHT))
-			horizontalYaw = 1;
-		else if (haris::Input::isKeyPressed(H_LEFT))
-			horizontalYaw = -1;
+		if (x == 0 && y == 0 && z == 0) {
+			return;
+		}
 
-		if (haris::Input::isKeyPressed(H_DOWN))
-			verticalYaw = 1;
-		else if (haris::Input::isKeyPressed(H_UP))
-			verticalYaw = -1;
+		vec3d position = { x * moveSpeed * deltaTime, y * moveSpeed * deltaTime, z * moveSpeed * deltaTime };
+		myMesh.coordinates = Vector_Add(myMesh.coordinates, position);
+		myMesh.hasChanged = true;
+	}
+
+	mat4x4 Renderer::GetCameraViewMatrix(float deltaTime) {
+
+		if (haris::Input::isKeyPressed(H_L))
+			myCamera.lockMovement = !myCamera.lockMovement;
+
+		float x = 0;
+		float y = 0;
+		float z = 0;
+		float horizontalYaw = 0;
+		float verticalYaw = 0;
+
+		if (myCamera.lockMovement == false) {
+			
+			if (haris::Input::isKeyPressed(H_A))
+				x = 1;
+			else if (haris::Input::isKeyPressed(H_D))
+				x = -1;
+
+			if (haris::Input::isKeyPressed(H_SPACE))
+				y = 1;
+			else if (haris::Input::isKeyPressed(H_SHIFT))
+				y = -1;
+
+			if (haris::Input::isKeyPressed(H_W))
+				z = 1;
+			else if (haris::Input::isKeyPressed(H_S))
+				z = -1;
+
+			if (haris::Input::isKeyPressed(H_RIGHT))
+				horizontalYaw = 1;
+			else if (haris::Input::isKeyPressed(H_LEFT))
+				horizontalYaw = -1;
+
+			if (haris::Input::isKeyPressed(H_DOWN))
+				verticalYaw = 1;
+			else if (haris::Input::isKeyPressed(H_UP))
+				verticalYaw = -1;			
+		}
 
 		vec3d position = { x * myCamera.moveSpeed * deltaTime, y * myCamera.moveSpeed * deltaTime, z * myCamera.moveSpeed * deltaTime };
 		myCamera.vCamera = Vector_Add(myCamera.vCamera, position);
@@ -185,63 +249,99 @@ namespace haris {
 
 		return Matrix_QuickInverse(matCamera);
 	}
-	
-	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float& hertz) {
+
+	void Renderer::RotateDirectionalLight(vec3d rotation) {
+		mat4x4 RotX = Matrix_MakeRotationX(rotation.x);
+		mat4x4 RotY = Matrix_MakeRotationY(rotation.y);
+		mat4x4 RotZ = Matrix_MakeRotationY(rotation.z);
+
+		vec3d vTarget = { 0, 0, 1 };
+		directionalLight = Matrix_MultiplyVector(RotX, vTarget);
+		directionalLight = Matrix_MultiplyVector(RotY, directionalLight);
+		directionalLight = Matrix_MultiplyVector(RotZ, directionalLight);
+	}
+
+	void Renderer::transformTris(mesh& myMesh, float& theta, float& vol_l, float& vol_r) {
+
+		if (!myMesh.hasChanged) {	//If the mesh hasn't changed AND it isn't linked to any audio vars
+			if (!myMesh.linkFrequency && !myMesh.linkPitch && !myMesh.linkVolume && !myMesh.linkTheta && !myMesh.hasChanged) {
+				return;
+			}
+		}
 
 		mat4x4 matRotX;
 		mat4x4 matRotY;
 		mat4x4 matRotZ;
 
 		if (myMesh.linkTheta) {
-			matRotX = Matrix_MakeRotationX(myMesh.rotation.x + (theta * delta));
-			matRotY = Matrix_MakeRotationY(myMesh.rotation.y + (theta * delta));
-			matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z + (theta * delta));
+			matRotX = Matrix_MakeRotationX(myMesh.rotation.x + (theta));
+			matRotY = Matrix_MakeRotationY(myMesh.rotation.y + (theta));
+			matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z + (theta));
 		}
 		else {
 			matRotX = Matrix_MakeRotationX(myMesh.rotation.x);
 			matRotY = Matrix_MakeRotationY(myMesh.rotation.y);
 			matRotZ = Matrix_MakeRotationZ(myMesh.rotation.z);
 		}
-		
+
 		mat4x4 matScale;
 
 		if (myMesh.linkVolume) {
-			float volStuff = 1.0f + (std::abs((vol_l+vol_r)/2) * sensitivity);
-			matScale = Matrix_MakeScale(myMesh.scale.x + volStuff, myMesh.scale.y + volStuff, myMesh.scale.z + volStuff);
+			float averageVolume = std::abs((vol_l + vol_r) / 2) * sensitivity;
+			matScale = Matrix_MakeScale(myMesh.scale.x + averageVolume, myMesh.scale.y + averageVolume, myMesh.scale.z + averageVolume);
 		}
 		else {
 			matScale = Matrix_MakeScale(myMesh.scale.x, myMesh.scale.y, myMesh.scale.z);
 		}
-		
-		mat4x4 matWorld = Matrix_MultiplyMatrix(matScale, matRotX);
-		mat4x4 matTrans = Matrix_MakeTranslation(myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z);
 
+		mat4x4 matTrans = Matrix_MakeTranslation(-myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z);
+
+		mat4x4 matWorld = Matrix_MultiplyMatrix(matScale, matRotX);	//Scale and rotate around origin
 		matWorld = Matrix_MultiplyMatrix(matWorld, matRotY);
-		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);
+		matWorld = Matrix_MultiplyMatrix(matWorld, matTrans);	//Translate away from origin
 
-		std::vector<triangle> vecTrianglesToRaster;
+		std::vector<triangle> myTrisTransformed;
 
 		//draw triangles
 		for (auto tri : myMesh.tris) {
 			triangle triProjected, triTransformed, triViewed;
 
-			triTransformed.p[0] = Matrix_MultiplyVector(matWorld, tri.p[0]);
-			triTransformed.p[1] = Matrix_MultiplyVector(matWorld, tri.p[1]);
-			triTransformed.p[2] = Matrix_MultiplyVector(matWorld, tri.p[2]);
+			triTransformed.p[0].coordinates = Matrix_MultiplyVector(matWorld, tri.p[0].coordinates);
+			triTransformed.p[1].coordinates = Matrix_MultiplyVector(matWorld, tri.p[1].coordinates);
+			triTransformed.p[2].coordinates = Matrix_MultiplyVector(matWorld, tri.p[2].coordinates);
+			triTransformed.fillColor = tri.fillColor;
+			triTransformed.outlineColor = tri.outlineColor;
 
-			vec3d normal, normalisedNormal, line1, line2;
-			line1 = Vector_Sub(triTransformed.p[1], triTransformed.p[0]);
-			line2 = Vector_Sub(triTransformed.p[2], triTransformed.p[0]);
+			myTrisTransformed.push_back(triTransformed);
+		}
+
+		myMesh.trisTransformed = myTrisTransformed;
+		myMesh.hasChanged = false;
+	}
+	
+	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r) {
+		
+		transformTris(myMesh, theta, vol_l, vol_r);
+
+		std::vector<triangle> vecTrianglesToRaster;
+
+		//draw triangles
+		for (auto tri : myMesh.trisTransformed) {
+			triangle triProjected, triViewed;
+
+			vec3d normal, p0NormalisedNormal, line1, line2;
+			line1 = Vector_Sub(tri.p[1].coordinates, tri.p[0].coordinates);
+			line2 = Vector_Sub(tri.p[2].coordinates, tri.p[0].coordinates);
 			normal = Vector_CrossProduct(line1, line2);
-			normalisedNormal = Vector_Normalise(normal);
+			p0NormalisedNormal = Vector_Normalise(normal);
 
-			vec3d vCameraRay = Vector_Sub(triTransformed.p[0], myCamera.vCamera);
+			vec3d vCameraRay = Vector_Sub(tri.p[0].coordinates, myCamera.vCamera);
 
-			if(Vector_DotProduct(normalisedNormal, vCameraRay) < 0.0f)
+			if(Vector_DotProduct(p0NormalisedNormal, vCameraRay) < 0.0f)
 			{
-				triViewed.p[0] = Matrix_MultiplyVector(matView, triTransformed.p[0]);
-				triViewed.p[1] = Matrix_MultiplyVector(matView, triTransformed.p[1]);
-				triViewed.p[2] = Matrix_MultiplyVector(matView, triTransformed.p[2]);
+				triViewed.p[0].coordinates = Matrix_MultiplyVector(matView, tri.p[0].coordinates);
+				triViewed.p[1].coordinates = Matrix_MultiplyVector(matView, tri.p[1].coordinates);
+				triViewed.p[2].coordinates = Matrix_MultiplyVector(matView, tri.p[2].coordinates);
 
 				int nClippedTriangles = 0;
 				triangle clipped[2];
@@ -250,28 +350,33 @@ namespace haris {
 				for (int n = 0; n < nClippedTriangles; n++)
 				{
 					//Apply projection matrix
-					triProjected.p[0] = Matrix_MultiplyVector(matProj, clipped[n].p[0]);
-					triProjected.p[1] = Matrix_MultiplyVector(matProj, clipped[n].p[1]);
-					triProjected.p[2] = Matrix_MultiplyVector(matProj, clipped[n].p[2]);
+					triProjected.p[0].coordinates = Matrix_MultiplyVector(matProj, clipped[n].p[0].coordinates);
+					triProjected.p[1].coordinates = Matrix_MultiplyVector(matProj, clipped[n].p[1].coordinates);
+					triProjected.p[2].coordinates = Matrix_MultiplyVector(matProj, clipped[n].p[2].coordinates);
 
 					//Normalize
-					triProjected.p[0] = Vector_Div(triProjected.p[0], triProjected.p[0].w);
-					triProjected.p[1] = Vector_Div(triProjected.p[1], triProjected.p[1].w);
-					triProjected.p[2] = Vector_Div(triProjected.p[2], triProjected.p[2].w);
+					triProjected.p[0].coordinates = Vector_Div(triProjected.p[0].coordinates, triProjected.p[0].coordinates.w);
+					triProjected.p[1].coordinates = Vector_Div(triProjected.p[1].coordinates, triProjected.p[1].coordinates.w);
+					triProjected.p[2].coordinates = Vector_Div(triProjected.p[2].coordinates, triProjected.p[2].coordinates.w);
 
 					vec3d vOffsetView = { 1,1,0 };
 
-					triProjected.p[0] = Vector_Add(triProjected.p[0], vOffsetView);
-					triProjected.p[1] = Vector_Add(triProjected.p[1], vOffsetView);
-					triProjected.p[2] = Vector_Add(triProjected.p[2], vOffsetView);
+					triProjected.p[0].coordinates = Vector_Add(triProjected.p[0].coordinates, vOffsetView);
+					triProjected.p[1].coordinates = Vector_Add(triProjected.p[1].coordinates, vOffsetView);
+					triProjected.p[2].coordinates = Vector_Add(triProjected.p[2].coordinates, vOffsetView);
 
 					float myScale = 0.5 * (screenWidth - 1);
-					triProjected.p[0].x *= myScale; triProjected.p[0].y *= myScale; triProjected.p[0].z *=  myScale;
-					triProjected.p[1].x *= myScale; triProjected.p[1].y *= myScale; triProjected.p[1].z *= myScale;
-					triProjected.p[2].x *= myScale; triProjected.p[2].y *= myScale; triProjected.p[2].z *= myScale;
-
+					triProjected.p[0].coordinates.x *= myScale; triProjected.p[0].coordinates.y *= myScale; triProjected.p[0].coordinates.z *=  myScale;
+					triProjected.p[1].coordinates.x *= myScale; triProjected.p[1].coordinates.y *= myScale; triProjected.p[1].coordinates.z *= myScale;
+					triProjected.p[2].coordinates.x *= myScale; triProjected.p[2].coordinates.y *= myScale; triProjected.p[2].coordinates.z *= myScale;
+					
 					triProjected.fillColor = tri.fillColor;
 					triProjected.outlineColor = tri.outlineColor;
+
+					float facingRatio = std::fmax(ambientLightingIntensity, Vector_DotProduct(p0NormalisedNormal, directionalLight));
+					triProjected.p[0].h = facingRatio;
+					triProjected.p[1].h = facingRatio;
+					triProjected.p[2].h = facingRatio;
 
 					vecTrianglesToRaster.push_back(triProjected);
 				}
@@ -314,9 +419,9 @@ namespace haris {
 			for (auto& t : listTriangles) {
 
 				if (myMesh.drawWireframe) {
-					drawTriangle({ (int)t.p[0].x, (int)t.p[0].y },
-						{ (int)t.p[1].x, (int)t.p[1].y },
-						{ (int)t.p[2].x, (int)t.p[2].y }, t.outlineColor);
+					drawTriangle({ (int)t.p[0].coordinates.x, (int)t.p[0].coordinates.y },
+						{ (int)t.p[1].coordinates.x, (int)t.p[1].coordinates.y },
+						{ (int)t.p[2].coordinates.x, (int)t.p[2].coordinates.y }, t.outlineColor);
 				}
 				if (myMesh.drawFilled) {
 					drawFilledTriangle(t, t.fillColor);
@@ -332,7 +437,6 @@ namespace haris {
 
 		mat4x4 matRotZ = Matrix_MakeRotationZ( barMesh.rotation.z);
 		mat4x4 matRotX = Matrix_MakeRotationX( theta + barMesh.rotation.x);
-		float h = 1;
 
 		for (int b = 0; b < numBars; b++) {
 			mesh myMesh = barMesh;
@@ -340,7 +444,7 @@ namespace haris {
 			myMesh.scale = { myMesh.scale.x, myMesh.scale.y + std::abs(freq[b]), myMesh.scale.z };	//spreads bars across X axis
 			myMesh.coordinates = { (numBars / 2 - b) * (myMesh.scale.x * 2) + myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z };
 
-			draw3dMesh(myMesh, matView, delta, theta, vol_l, vol_r, h);
+			draw3dMesh(myMesh, matView, delta, theta, vol_l, vol_r);
 		}
 	}
 	
@@ -352,7 +456,7 @@ namespace haris {
 
 		for (int i = 0; i < numBars; i++) {
 			Rect bar = { startX + (barWidth * i), 300, barWidth, (int)(freq[i] * sens) };
-			Renderer::fillRectangle(bar, { 255,0,0 });
+			Renderer::drawFilledRectangle(bar, { 255,0,0 });
 		}
 	}
 	
@@ -418,22 +522,22 @@ namespace haris {
 	void Renderer::drawFilledTriangle(haris::triangle tri, const RGBColor& color) {
 
 		// Sort the points so that y0 <= y1 <= y2
-		if (tri.p[1].y < tri.p[0].y) {
+		if (tri.p[1].coordinates.y < tri.p[0].coordinates.y) {
 			std::swap(tri.p[1], tri.p[0]);
 		}
-		if (tri.p[2].y < tri.p[0].y) {
+		if (tri.p[2].coordinates.y < tri.p[0].coordinates.y) {
 			std::swap(tri.p[0], tri.p[2]);
 		}
-		if (tri.p[2].y < tri.p[1].y) {
+		if (tri.p[2].coordinates.y < tri.p[1].coordinates.y) {
 			std::swap(tri.p[1], tri.p[2]);
 		}
 
-		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);
-		std::vector<float> zab = interpolate(tri.p[0].y, 1 / tri.p[0].z, tri.p[1].y, 1 / tri.p[1].z);
-		std::vector<float> xbc = interpolate(tri.p[1].y, tri.p[1].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zbc = interpolate(tri.p[1].y, 1 / tri.p[1].z, tri.p[2].y, 1 / tri.p[2].z);
-		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zac = interpolate(tri.p[0].y, 1 / tri.p[0].z, tri.p[2].y, 1 / tri.p[2].z);
+		std::vector<float> xab = interpolate(tri.p[0].coordinates.y, tri.p[0].coordinates.x, tri.p[1].coordinates.y, tri.p[1].coordinates.x);
+		std::vector<float> zab = interpolate(tri.p[0].coordinates.y, 1 / tri.p[0].coordinates.z, tri.p[1].coordinates.y, 1 / tri.p[1].coordinates.z);
+		std::vector<float> xbc = interpolate(tri.p[1].coordinates.y, tri.p[1].coordinates.x, tri.p[2].coordinates.y, tri.p[2].coordinates.x);
+		std::vector<float> zbc = interpolate(tri.p[1].coordinates.y, 1 / tri.p[1].coordinates.z, tri.p[2].coordinates.y, 1 / tri.p[2].coordinates.z);
+		std::vector<float> xac = interpolate(tri.p[0].coordinates.y, tri.p[0].coordinates.x, tri.p[2].coordinates.y, tri.p[2].coordinates.x);
+		std::vector<float> zac = interpolate(tri.p[0].coordinates.y, 1 / tri.p[0].coordinates.z, tri.p[2].coordinates.y, 1 / tri.p[2].coordinates.z);
 
 		int numPixels = xab.size() + xbc.size() - 1;
 		std::vector<float> xabc;
@@ -475,8 +579,8 @@ namespace haris {
 		std::vector<float> hSegment;
 		BitmapBuffer& buffer = getInstance().buffer;
 
-		for (int y = (int)tri.p[0].y; y < (int)tri.p[2].y - 1; y++) {
-			int secondY = y - (int)tri.p[0].y;
+		for (int y = (int)tri.p[0].coordinates.y; y < (int)tri.p[2].coordinates.y - 1; y++) {
+			int secondY = y - (int)tri.p[0].coordinates.y;
 
 			int xL = (int)xLeft.at(secondY);
 			int xR = (int)xRight.at(secondY);
@@ -496,28 +600,25 @@ namespace haris {
 
 	void Renderer::drawShadedTriangle(haris::triangle tri, const RGBColor& color) {
 		// Sort the points so that y0 <= y1 <= y2
-		if (tri.p[1].y < tri.p[0].y) {
+		if (tri.p[1].coordinates.y < tri.p[0].coordinates.y) {
 			std::swap(tri.p[1], tri.p[0]);
-			std::swap(tri.h[1], tri.h[0]);
 		}
-		if (tri.p[2].y < tri.p[0].y) {
+		if (tri.p[2].coordinates.y < tri.p[0].coordinates.y) {
 			std::swap(tri.p[0], tri.p[2]);
-			std::swap(tri.h[2], tri.h[0]);
 		}
-		if (tri.p[2].y < tri.p[1].y) {
+		if (tri.p[2].coordinates.y < tri.p[1].coordinates.y) {
 			std::swap(tri.p[1], tri.p[2]);
-			std::swap(tri.h[1], tri.h[2]);
 		}
 
-		std::vector<float> xab = interpolate(tri.p[0].y, tri.p[0].x, tri.p[1].y, tri.p[1].x);
-		std::vector<float> zab = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[1].y, 1/tri.p[1].z);
-		std::vector<float> xbc = interpolate(tri.p[1].y, tri.p[1].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zbc = interpolate(tri.p[1].y, 1/tri.p[1].z, tri.p[2].y, 1/tri.p[2].z);
-		std::vector<float> xac = interpolate(tri.p[0].y, tri.p[0].x, tri.p[2].y, tri.p[2].x);
-		std::vector<float> zac = interpolate(tri.p[0].y, 1/tri.p[0].z, tri.p[2].y, 1/tri.p[2].z);
-		std::vector<float> hab = interpolate(tri.p[0].y, tri.h[0], tri.p[1].y, tri.h[1]);
-		std::vector<float> hbc = interpolate(tri.p[1].y, tri.h[1], tri.p[2].y, tri.h[2]);
-		std::vector<float> hac = interpolate(tri.p[0].y, tri.h[0], tri.p[2].y, tri.h[2]);
+		std::vector<float> xab = interpolate(tri.p[0].coordinates.y, tri.p[0].coordinates.x, tri.p[1].coordinates.y, tri.p[1].coordinates.x);
+		std::vector<float> zab = interpolate(tri.p[0].coordinates.y, 1 / tri.p[0].coordinates.z, tri.p[1].coordinates.y, 1 / tri.p[1].coordinates.z);
+		std::vector<float> xbc = interpolate(tri.p[1].coordinates.y, tri.p[1].coordinates.x, tri.p[2].coordinates.y, tri.p[2].coordinates.x);
+		std::vector<float> zbc = interpolate(tri.p[1].coordinates.y, 1 / tri.p[1].coordinates.z, tri.p[2].coordinates.y, 1 / tri.p[2].coordinates.z);
+		std::vector<float> xac = interpolate(tri.p[0].coordinates.y, tri.p[0].coordinates.x, tri.p[2].coordinates.y, tri.p[2].coordinates.x);
+		std::vector<float> zac = interpolate(tri.p[0].coordinates.y, 1 / tri.p[0].coordinates.z, tri.p[2].coordinates.y, 1 / tri.p[2].coordinates.z);
+		std::vector<float> hab = interpolate(tri.p[0].coordinates.y, tri.p[0].h, tri.p[1].coordinates.y, tri.p[1].h);
+		std::vector<float> hbc = interpolate(tri.p[1].coordinates.y, tri.p[1].h, tri.p[2].coordinates.y, tri.p[2].h);
+		std::vector<float> hac = interpolate(tri.p[0].coordinates.y, tri.p[2].h, tri.p[2].coordinates.y, tri.p[2].h);
 
 		int numPixels = xab.size() + xbc.size() - 1;
 		std::vector<float> xabc;
@@ -570,8 +671,8 @@ namespace haris {
 		
 		BitmapBuffer& buffer = getInstance().buffer;
 
-		for (int y = (int)tri.p[0].y; y < (int)tri.p[2].y - 1; y++) {
-			int secondY = y - (int)tri.p[0].y;
+		for (int y = (int)tri.p[0].coordinates.y; y < (int)tri.p[2].coordinates.y - 1; y++) {
+			int secondY = y - (int)tri.p[0].coordinates.y;
 
 			int xL = (int)xLeft.at(secondY);
 			int xR = (int)xRight.at(secondY);
@@ -595,7 +696,7 @@ namespace haris {
 		}
 	}
 
-	void Renderer::fillRectangle(const Rect& rect, const RGBColor& color) 
+	void Renderer::drawFilledRectangle(const Rect& rect, const RGBColor& color) 
 	{
 		BitmapBuffer& buffer = getInstance().buffer;
 
@@ -669,6 +770,6 @@ namespace haris {
 
 	void Renderer::clear() {
 		BitmapBuffer& buffer = getInstance().buffer;
-		fillRectangle({ 0, 0, buffer.width, buffer.height }, getInstance().clearColor);
+		drawFilledRectangle({ 0, 0, buffer.width, buffer.height }, getInstance().clearColor);
 	}
 }
