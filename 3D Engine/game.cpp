@@ -1,6 +1,7 @@
 #include "game.h"
 #include "renderer.h"
 #include "input.h"
+#include "AudioCapture.h"
 
 namespace haris
 {
@@ -27,11 +28,13 @@ namespace haris
 		switch (message) {
 		case WM_CLOSE: {
 			Game::getInstance().running = false;
+			AudioCapture::terminate();
 			OutputDebugString(L"Window close\n");
 		}break;
 
 		case WM_DESTROY: {
 			Game::getInstance().running = false;
+			AudioCapture::terminate();
 			OutputDebugString(L"Window destroyed\n");
 		}break;
 

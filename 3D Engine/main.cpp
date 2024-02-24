@@ -11,27 +11,13 @@ framework_app_entry_point
 	float hertz;
 	float* freqDisplay = (float*)malloc(sizeof(float) * numBars);	//change to num bars
 
-	haris::AudioCapture audioCapture = haris::AudioCapture(vol_l, vol_r, *freqDisplay, numBars, hertz);
+	haris::AudioCapture::startStream(vol_l, vol_r, freqDisplay, numBars, hertz);
 
 	haris::Game::setGameUpdate([&](float delta) {
-		wchar_t charBuffer[256];
 
-		static float theta = 0.0;
+		haris::Renderer::RenderScene(delta, vol_l, vol_r, freqDisplay, numBars, hertz);
+
 		
-		theta += 1.0f * delta;
-
-		haris::Renderer::RenderScene(theta, delta, vol_l, vol_r, freqDisplay, numBars, hertz);
-
-		if (haris::Input::isKeyPressed(H_P))
-			audioCapture.terminate();
-		if (haris::Input::isKeyPressed(H_K)) {
-			numBars = numBars - 1;
-			audioCapture.changeNumBars(numBars);
-		}	
-		else if (haris::Input::isKeyPressed(H_L)) {
-			numBars = numBars + 1;
-			audioCapture.changeNumBars(numBars);
-		}
 	}
 	);
 

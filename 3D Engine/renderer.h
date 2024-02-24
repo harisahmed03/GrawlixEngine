@@ -126,6 +126,13 @@ namespace haris
 		float moveSpeed = 30;
 		float lookSpeed = 200;
 		bool lockMovement = false;
+		bool mouseControls = false;
+	};
+
+	struct DirectionalLight {
+		vec3d directionalVector;
+		float ambientLightingIntensity = 0.2;
+		bool hasChanged = true;
 	};
 
 	class Renderer {
@@ -171,13 +178,13 @@ namespace haris
 
 		static void display2DFrequencyBars(float* freq);
 
-		static void transformTris(mesh& myMesh, float& theta, float& vol_l, float& vol_r);
+		static void transformTris(mesh& myMesh, float& delta, float& vol_l, float& vol_r);
 
-		static void display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float* freq, int& numBars);
+		static void display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& vol_l, float& vol_r, float* freq, int& numBars);
 
-		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r);
+		static void draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& vol_l, float& vol_r);
 
-		static void RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz);
+		static void RenderScene(float& delta, float& vol_l, float& vol_r, float* freq, int& numBars, float& hertz);
 
 		static mat4x4 GetCameraViewMatrix(float deltaTime);
 
@@ -551,6 +558,20 @@ namespace haris
 			return degrees * (3.14159 / 180);
 		}
 
+		static double mapOneRangeToAnother(double sourceNumber, double fromA, double fromB, double toA, double toB, int decimalPrecision) {
+			double deltaA = fromB - fromA;
+			double deltaB = toB - toA;
+			if (deltaA == 0 || deltaB == 0) {  //One set of end-points is not a range, therefore, cannot calculate a meaningful number.
+				return NULL;
+			}
+			double scale = deltaB / deltaA;
+			double negA = -1 * fromA;
+			double offset = (negA * scale) + toA;
+			double finalNumber = (sourceNumber * scale) + offset;
+			int calcScale = (int)std::pow(10, decimalPrecision);
+			return (double)std::round(finalNumber * calcScale) / calcScale;
+		}
+
 	private:
 		Renderer();
 
@@ -574,6 +595,20 @@ namespace haris
 		static void coppyBufferToWindow(HDC deviceContext, int windowWidth, int windowHeight);
 
 		static void clear();
+
+		//Print functions for debugging
+		static void print(std::string message) {
+			wchar_t charBuffer[2000];
+			swprintf(charBuffer, 2000, L"PortAudio error: %s\n", message);
+			OutputDebugString(charBuffer);
+			exit(EXIT_FAILURE);
+		}
+
+		static void printN(float message) {
+			wchar_t charBuffer[2000];
+			swprintf(charBuffer, 2000, L"Hertz %f\n", message);
+			OutputDebugString(charBuffer);
+		}
 
 	};
 }

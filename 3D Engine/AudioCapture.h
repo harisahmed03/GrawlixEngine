@@ -8,8 +8,9 @@
 namespace haris {
 	class AudioCapture {
 	public:
-		AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars, float& hertz);
-		PaError err;
+		AudioCapture() {};
+
+		static void startStream(float& vol_l, float& vol_r, float* freqDisplay, int& numBars, float& hertz);
 
 		static void checkErr(PaError err) {
 			if (err != paNoError) {
@@ -23,16 +24,17 @@ namespace haris {
 			void* userData
 		);
 
-		static int fileAudioCallback(
-			const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
-			const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
-			void* userData
-		);
+		static inline float mymax(float a, float b) {
+			return a > b ? a : b;
+		}
 
-		void terminate();
+		static inline float mymin(float a, float b) {
+			return a < b ? a : b;
+		}
 
-		static void changeNumBars(int& numBars);
+		static void terminate();
 
+		//Print functions for debugging
 		static void print(std::string message) {
 			wchar_t charBuffer[2000];
 			swprintf(charBuffer, 2000, L"PortAudio error: %s\n", message);
@@ -44,14 +46,6 @@ namespace haris {
 			wchar_t charBuffer[2000];
 			swprintf(charBuffer, 2000, L"Hertz %f\n", message);
 			OutputDebugString(charBuffer);
-		}
-
-		static inline float mymax(float a, float b) {
-			return a > b ? a : b;
-		}
-
-		static inline float mymin(float a, float b) {
-			return a < b ? a : b;
 		}
 	};
 }

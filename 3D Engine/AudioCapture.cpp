@@ -29,19 +29,30 @@ namespace haris {
         float* freqDisplay;
         int* numBars;
         float* hertz;
-        SNDFILE** sndFile;
 
     } streamCallbackData;
 
     static streamCallbackData* spectroData;
     PaStream* stream;
 
-	AudioCapture::AudioCapture(float& vol_l, float& vol_r, float& freqDisplay, int& numBars, float& hertz) {
-        PaError err;
+    void AudioCapture::startStream(float& vol_l, float& vol_r, float* freqDisplay, int& numBars, float& hertz) {
+        PaError err;    //Initializing port audio
         err = Pa_Initialize();
         AudioCapture::checkErr(err);
 
-        spectroData = (streamCallbackData*)malloc(sizeof(streamCallbackData));
+        int numDevices = Pa_GetDeviceCount();
+        printf("Number of devices: %d\n", numDevices);
+
+        if (numDevices < 0) {
+            printf("Error getting device count.\n");
+            exit(EXIT_FAILURE);
+        }
+        else if (numDevices == 0) {
+            printf("There are no available audio devices on this machine.\n");
+            exit(EXIT_SUCCESS);
+        }
+
+        spectroData = (streamCallbackData*)malloc(sizeof(streamCallbackData));  //User data we will send to our audio callback function
         spectroData->in = (double*)malloc(sizeof(double) * FRAMES_PER_BUFFER);
         spectroData->out = (double*)malloc(sizeof(double) * FRAMES_PER_BUFFER);
         if (spectroData->in == NULL || spectroData->out == NULL) {
@@ -56,29 +67,17 @@ namespace haris {
         spectroData->startIndex = std::ceil(sampleRatio * SPECTRO_FREQ_START);
         spectroData->spectroSize = mymin(std::ceil(sampleRatio * SPECTRO_FREQ_END), FRAMES_PER_BUFFER / 2.0) - spectroData->startIndex;
 
-        spectroData->vol_l = &vol_l;
-        spectroData->freqDisplay = &freqDisplay;
+        spectroData->vol_l = &vol_l;    //set pointers to variables, to be used by renderer
+        spectroData->freqDisplay = freqDisplay;
         spectroData->vol_r = &vol_r;
         spectroData->numBars = &numBars;
         spectroData->hertz = &hertz;
-
-        int numDevices = Pa_GetDeviceCount();
-        printf("Number of devices: %d\n", numDevices);
-
-        if (numDevices < 0) {
-            printf("Error getting device count.\n");
-            exit(EXIT_FAILURE);
-        }
-        else if (numDevices == 0) {
-            printf("There are no available audio devices on this machine.\n");
-            exit(EXIT_SUCCESS);
-        }
 
         int inputdevice = WINDOWS_DEFAULT_AUDIO_DEVICE;
 
         PaStreamParameters inputParameters;
 
-        memset(&inputParameters, 0, sizeof(inputParameters));
+        memset(&inputParameters, 0, sizeof(inputParameters));   //Set input parameters
         inputParameters.channelCount = NUM_CHANNELS;
         inputParameters.device = inputdevice;
         inputParameters.hostApiSpecificStreamInfo = NULL;
@@ -97,9 +96,9 @@ namespace haris {
         );
         AudioCapture::checkErr(err);
 
-        err = Pa_StartStream(stream);
-        AudioCapture::checkErr(err);  
-	}
+        err = Pa_StartStream(stream);   //Start executing callback function
+        AudioCapture::checkErr(err);
+    }
 
     int AudioCapture::microphoneAudioCallback(
         const void* inputBuffer, void* outputBuffer, unsigned long framesPerBuffer,
@@ -126,36 +125,26 @@ namespace haris {
         }
         //operate on the fourier transform
 
-        float temp_vol_l = 0;
-        float temp_vol_r = 0;
-        int maxVolIndex_l = 0;
-        int maxVolIndex_r = 0;
+        float max_vol_l = 0;
+        float max_vol_r = 0;
 
         for (unsigned long i = 0; i < framesPerBuffer * 2; i += 2) {
-            if (temp_vol_l < std::abs(in[i])) {
-                temp_vol_l = in[i];
-                maxVolIndex_l = i;
+            if (max_vol_l < std::abs(in[i])) {
+                max_vol_l = in[i];
             }
-            if (temp_vol_l < std::abs(in[i+1])) {
-                temp_vol_r = in[i];
-                maxVolIndex_r = i;
+            if (max_vol_r < std::abs(in[i+1])) {
+                max_vol_r = in[i];
             }
         }
 
-        //printN(frequency);
-
-        *((streamCallbackData*)userData)->vol_l = temp_vol_l;
-        *((streamCallbackData*)userData)->vol_r = temp_vol_r;        
+        *((streamCallbackData*)userData)->vol_l = max_vol_l;
+        *((streamCallbackData*)userData)->vol_r = max_vol_l;
 
         return 0;
     }
 
-    void AudioCapture::changeNumBars(int& numBars) {
-        spectroData->numBars = &numBars;
-    }
-
     void AudioCapture::terminate() {
-        err = Pa_StopStream(stream);
+        PaError err = Pa_StopStream(stream);
         AudioCapture::checkErr(err);
 
         err = Pa_CloseStream(stream);

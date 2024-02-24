@@ -34,8 +34,9 @@ namespace haris {
 
 	bool clippingEnabled = false;
 
-	vec3d directionalLight;
-	float ambientLightingIntensity = 0.2;
+	DirectionalLight directionalLight;
+
+	float timeElapsed;
 
 	//Create init function
 	Renderer::Renderer() {
@@ -127,21 +128,22 @@ namespace haris {
 
 	}
 
-	void Renderer::RenderScene(float theta, float delta, float vol_l, float vol_r, float* freq, int& numBars, float& hertz) {
+	void Renderer::RenderScene(float& delta, float& vol_l, float& vol_r, float* freq, int& numBars, float& hertz) {
 		
+		timeElapsed += delta;
 		mat4x4 matView = GetCameraViewMatrix(delta);
 
-		RotateDirectionalLight({ theta * 50, theta * 10, theta * 100 });
+		RotateDirectionalLight({ timeElapsed * 50, timeElapsed * 50, timeElapsed * 50 });
 
 		for (auto& m : frequencyMeshes) {
-			display3DFrequencyBars(m, matView, delta, theta, vol_l, vol_r, freq, numBars);
+			display3DFrequencyBars(m, matView, delta, vol_l, vol_r, freq, numBars);
 		}
 		
 		for (auto& m : myMeshes) {
 			if (m.moveMesh && myCamera.lockMovement) {
 				MoveMesh(m, delta);
 			}
-			draw3dMesh(m, matView, delta, theta, vol_l, vol_r);
+			draw3dMesh(m, matView, delta, vol_l, vol_r);
 		}
 		
 		if (haris::Input::isKeyPressed(H_O)) {
@@ -155,6 +157,14 @@ namespace haris {
 				m.randomizeTriColors();
 			}
 		}
+
+		if (haris::Input::isKeyPressed(H_K)) {
+			numBars = numBars - 1;
+		}
+		else if (haris::Input::isKeyPressed(H_L)) {
+			numBars = numBars + 1;
+		}
+
 		//display2DFrequencyBars(freq);
 
 		//Clear depth buffer
@@ -228,13 +238,33 @@ namespace haris {
 			if (haris::Input::isKeyPressed(H_DOWN))
 				verticalYaw = 1;
 			else if (haris::Input::isKeyPressed(H_UP))
-				verticalYaw = -1;			
+				verticalYaw = -1;
+
+			if (haris::Input::isKeyPressed(H_Z))
+				myCamera.mouseControls = !myCamera.mouseControls;
 		}
 
-		
-		myCamera.horizontalYaw += horizontalYaw * myCamera.lookSpeed * deltaTime;
-		myCamera.verticalYaw += verticalYaw * myCamera.lookSpeed * deltaTime;
+		if (myCamera.mouseControls) {
+			int mouseX = Input::getMousePosition().x - (screenWidth / 2);
+			int mouseY = Input::getMousePosition().y - (screenHeight / 2);
 
+			float outputX = mapOneRangeToAnother(mouseX, -(screenWidth / 2), (screenWidth / 2), -180, 180, 1);
+			float outputY = mapOneRangeToAnother(mouseY, -(screenHeight / 2), (screenHeight / 2), -180, 180, 1);
+			myCamera.horizontalYaw = outputX;
+			myCamera.verticalYaw = outputY;
+		}
+		else {
+			myCamera.horizontalYaw += horizontalYaw * myCamera.lookSpeed * deltaTime;
+			myCamera.verticalYaw += verticalYaw * myCamera.lookSpeed * deltaTime;
+		}
+
+		if (myCamera.verticalYaw > 90) {
+			myCamera.verticalYaw = 90;
+		}
+		else if (myCamera.verticalYaw < -90) {
+			myCamera.verticalYaw = -90;
+		}
+		
 		vec3d vUp = { 0,1,0 };
 		vec3d vTarget = { 0, 0, 1 };
 
@@ -247,9 +277,11 @@ namespace haris {
 		vec3d vRight = Vector_CrossProduct(vForward, vUp);
 		vRight = Vector_Mul(vRight, myCamera.moveSpeed * deltaTime * x);
 		vForward = Vector_Mul(vForward, myCamera.moveSpeed * deltaTime * z);
+		vec3d vUp2 = Vector_Mul(vUp, myCamera.moveSpeed * deltaTime * y);
 
 		myCamera.vCamera = Vector_Add(myCamera.vCamera, vRight);
 		myCamera.vCamera = Vector_Add(myCamera.vCamera, vForward);
+		myCamera.vCamera = Vector_Add(myCamera.vCamera, vUp2);
 
 		vTarget = Vector_Add(myCamera.vCamera, myCamera.vLookDir);
 
@@ -264,9 +296,9 @@ namespace haris {
 		mat4x4 RotZ = Matrix_MakeRotationY(rotation.z);
 
 		vec3d vTarget = { 0, 0, 1 };
-		directionalLight = Matrix_MultiplyVector(RotX, vTarget);
-		directionalLight = Matrix_MultiplyVector(RotY, directionalLight);
-		directionalLight = Matrix_MultiplyVector(RotZ, directionalLight);
+		directionalLight.directionalVector = Matrix_MultiplyVector(RotX, vTarget);
+		directionalLight.directionalVector = Matrix_MultiplyVector(RotY, directionalLight.directionalVector);
+		directionalLight.directionalVector = Matrix_MultiplyVector(RotZ, directionalLight.directionalVector);
 	}
 
 	void Renderer::transformTris(mesh& myMesh, float& theta, float& vol_l, float& vol_r) {
@@ -327,9 +359,9 @@ namespace haris {
 		myMesh.hasChanged = false;
 	}
 	
-	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r) {
+	void Renderer::draw3dMesh(mesh& myMesh, mat4x4& matView, float& delta, float& vol_l, float& vol_r) {
 		
-		transformTris(myMesh, theta, vol_l, vol_r);
+		transformTris(myMesh, delta, vol_l, vol_r);
 
 		std::vector<triangle> vecTrianglesToRaster;
 
@@ -381,7 +413,7 @@ namespace haris {
 					triProjected.fillColor = tri.fillColor;
 					triProjected.outlineColor = tri.outlineColor;
 
-					float facingRatio = std::fmax(ambientLightingIntensity, Vector_DotProduct(p0NormalisedNormal, directionalLight));
+					float facingRatio = std::fmax(directionalLight.ambientLightingIntensity, Vector_DotProduct(p0NormalisedNormal, directionalLight.directionalVector));
 					triProjected.p[0].h = facingRatio;
 					triProjected.p[1].h = facingRatio;
 					triProjected.p[2].h = facingRatio;
@@ -441,10 +473,10 @@ namespace haris {
 		}
 	}
 
-	void Renderer::display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& theta, float& vol_l, float& vol_r, float* freq, int& numBars) {
+	void Renderer::display3DFrequencyBars(mesh& barMesh, mat4x4& matView, float& delta, float& vol_l, float& vol_r, float* freq, int& numBars) {
 
 		mat4x4 matRotZ = Matrix_MakeRotationZ( barMesh.rotation.z);
-		mat4x4 matRotX = Matrix_MakeRotationX( theta + barMesh.rotation.x);
+		mat4x4 matRotX = Matrix_MakeRotationX( delta + barMesh.rotation.x);
 
 		for (int b = 0; b < numBars; b++) {
 			mesh myMesh = barMesh;
@@ -452,7 +484,7 @@ namespace haris {
 			myMesh.scale = { myMesh.scale.x, myMesh.scale.y + std::abs(freq[b]), myMesh.scale.z };	//spreads bars across X axis
 			myMesh.coordinates = { (numBars / 2 - b) * (myMesh.scale.x * 2) + myMesh.coordinates.x, myMesh.coordinates.y, myMesh.coordinates.z };
 
-			draw3dMesh(myMesh, matView, delta, theta, vol_l, vol_r);
+			draw3dMesh(myMesh, matView, delta, vol_l, vol_r);
 		}
 	}
 	
