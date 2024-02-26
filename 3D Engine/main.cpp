@@ -1,5 +1,3 @@
-#include <iostream>
-#include <memory>
 #include "framework.h"
 
 framework_app_entry_point
@@ -16,8 +14,6 @@ framework_app_entry_point
 	haris::Game::setGameUpdate([&](float delta) {
 
 		haris::Renderer::RenderScene(delta, vol_l, vol_r, freqDisplay, numBars, hertz);
-
-		
 	}
 	);
 

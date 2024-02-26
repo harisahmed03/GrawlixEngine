@@ -9,8 +9,8 @@ namespace haris
 	{
 		// init window properties to default values
 		windowTitle = L"Haris's App";
-		windowWidth = 800;
-		windowHeight = 800;
+		windowWidth = 1000;
+		windowHeight = 1000;
 		timePassed = 0.0;
 		frames = 0;
 	}
@@ -144,6 +144,8 @@ namespace haris
 			LARGE_INTEGER last_counter;
 			QueryPerformanceCounter(&last_counter);
 
+			float delta;
+
 			while (running) {
 
 				LARGE_INTEGER current_counter;
@@ -151,7 +153,7 @@ namespace haris
 
 				int64_t counter_elapsed = current_counter.QuadPart - last_counter.QuadPart;
 
-				float delta = (float)counter_elapsed / (float)cpu_frequency.QuadPart;	//in seconds
+				delta = (float)counter_elapsed / (float)cpu_frequency.QuadPart;	//in seconds
 
 				last_counter = current_counter;
 

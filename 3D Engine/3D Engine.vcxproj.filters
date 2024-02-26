@@ -52,9 +52,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="axis.txt">
-      <Filter>Resource Files\Models</Filter>
-    </Text>
     <Text Include="Cube.txt">
       <Filter>Resource Files\Models</Filter>
     </Text>
@@ -64,16 +61,19 @@
     <Text Include="Gun.txt">
       <Filter>Resource Files\Models</Filter>
     </Text>
-    <Text Include="Ship.txt">
-      <Filter>Resource Files\Models</Filter>
-    </Text>
-    <Text Include="Spongebob.txt">
-      <Filter>Resource Files\Models</Filter>
-    </Text>
-    <Text Include="Arrow.txt">
-      <Filter>Resource Files\Models</Filter>
-    </Text>
     <Text Include="Icosphere.txt">
+      <Filter>Resource Files\Models</Filter>
+    </Text>
+    <Text Include="Torus.txt">
+      <Filter>Resource Files\Models</Filter>
+    </Text>
+    <Text Include="Cone.txt">
+      <Filter>Resource Files\Models</Filter>
+    </Text>
+    <Text Include="Bob.txt">
+      <Filter>Resource Files\Models</Filter>
+    </Text>
+    <Text Include="Cylinder.txt">
       <Filter>Resource Files\Models</Filter>
     </Text>
   </ItemGroup>

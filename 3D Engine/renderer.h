@@ -58,6 +58,7 @@ namespace haris
 		bool linkFrequency = false;
 		bool linkPitch = false;
 		bool linkTheta = false;
+		bool linkLighting = true;
 
 		bool drawWireframe = false;
 		bool drawFilled = false;
@@ -98,6 +99,10 @@ namespace haris
 					tris.push_back(temp);
 				}
 			}
+			if (tris.size() == 0) {
+			//("Could not load an object");
+				return false;
+			}
 			return true;
 		}
 
@@ -108,6 +113,7 @@ namespace haris
 				tris.at(i).fillColor = f;
 				tris.at(i).outlineColor = o;
 			}
+			hasChanged = true;
 		}
 
 		void setTriColors(RGBColor fillColor, RGBColor outlineColor) {
@@ -115,6 +121,7 @@ namespace haris
 				tris.at(i).fillColor = fillColor;
 				tris.at(i).outlineColor = outlineColor;
 			}
+			hasChanged = true;
 		}
 	};
 
@@ -131,7 +138,7 @@ namespace haris
 
 	struct DirectionalLight {
 		vec3d directionalVector;
-		float ambientLightingIntensity = 0.2;
+		float ambientLightingIntensity = 0.1;
 		bool hasChanged = true;
 	};
 
@@ -223,6 +230,23 @@ namespace haris
 			}
 
 			return values;
+		}
+
+		static void threadedInterpolate(std::vector<float>& myVector, int i0, float d0, int i1, float d1) {
+			if (i0 == i1 || i1 < i0) {
+				myVector.push_back(d0);
+				return;
+			}
+
+			float a = (d1 - d0) / (static_cast<float>(i1) - static_cast<float>(i0));
+			float d = d0;
+
+			myVector.reserve(i1 - i0);
+
+			for (int i = 0; i < i1 - i0; i++) {
+				myVector.push_back(d);
+				d += a;
+			}
 		}
 
 		static std::vector<float> Bresenham(int ya, int xa, int yb, int xb)
